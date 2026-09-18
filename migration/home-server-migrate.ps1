@@ -20,6 +20,11 @@ function Check-ExitCode {
     }
 }
 
+$FailureMessage = $null
+$RemoteRuntime = $null
+$RemoteConfig = $null
+$LocalReturnedConfig = $null
+
 try {
     Require-Command "ssh"
     Require-Command "scp"
@@ -49,12 +54,20 @@ try {
 
     $RemoteDir = "$RemoteHome/.local/share/onedrive-gdrive-migration"
     $RemoteScript = "$RemoteDir/home-server-migrate.sh"
-    $RemoteConfig = "$RemoteDir/rclone.conf"
 
     & ssh $Server "mkdir -p '$RemoteDir' && chmod 700 '$RemoteDir'"
     Check-ExitCode "Remote directory setup"
 
-    Write-Host "Uploading migration script and rclone.conf..." -ForegroundColor Cyan
+    $RemoteRuntime = (& ssh $Server "mktemp -d /tmp/onedrive-gdrive-migration.XXXXXX").Trim()
+    Check-ExitCode "Remote temporary directory setup"
+    if ($RemoteRuntime -notmatch '^/tmp/onedrive-gdrive-migration\.[A-Za-z0-9]+$') {
+        throw "Unexpected remote temporary path: $RemoteRuntime"
+    }
+
+    $RemoteConfig = "$RemoteRuntime/rclone.conf"
+    $LocalReturnedConfig = "$Config.remote-returned"
+
+    Write-Host "Uploading migration script and temporary rclone.conf..." -ForegroundColor Cyan
     & scp -q $RemoteScriptLocal "${Server}:$RemoteScript"
     Check-ExitCode "Script upload"
     & scp -q $Config "${Server}:$RemoteConfig"
@@ -69,14 +82,47 @@ try {
     Write-Host "Destination: gdrive-dst:OneDrive Migration" -ForegroundColor DarkGray
     Write-Host ""
 
-    & ssh $Server "'$RemoteScript'"
+    & ssh $Server "'$RemoteScript' '$RemoteConfig'"
     Check-ExitCode "Remote migration"
-
-    Write-Host ""
-    Write-Host "SUCCESS" -ForegroundColor Green
 }
 catch {
+    $FailureMessage = $_.Exception.Message
+}
+finally {
+    if ($RemoteConfig -and $LocalReturnedConfig) {
+        try {
+            & scp -q "${Server}:$RemoteConfig" $LocalReturnedConfig
+            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $LocalReturnedConfig -PathType Leaf)) {
+                Move-Item -LiteralPath $LocalReturnedConfig -Destination $Config -Force
+                Write-Host "Updated local rclone.conf with refreshed OAuth tokens." -ForegroundColor DarkGray
+            }
+            elseif (Test-Path -LiteralPath $LocalReturnedConfig) {
+                Remove-Item -LiteralPath $LocalReturnedConfig -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            Write-Warning "Could not retrieve refreshed rclone.conf: $($_.Exception.Message)"
+        }
+    }
+
+    if ($RemoteRuntime) {
+        try {
+            & ssh $Server "rm -rf '$RemoteRuntime'" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not remove temporary remote config directory: $RemoteRuntime"
+            }
+        }
+        catch {
+            Write-Warning "Could not remove temporary remote config directory: $RemoteRuntime"
+        }
+    }
+}
+
+if ($FailureMessage) {
     Write-Host ""
-    Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "FAILED: $FailureMessage" -ForegroundColor Red
     exit 1
 }
+
+Write-Host ""
+Write-Host "SUCCESS" -ForegroundColor Green

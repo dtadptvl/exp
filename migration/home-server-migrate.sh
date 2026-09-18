@@ -4,7 +4,7 @@ set -Eeuo pipefail
 SOURCE="onedrive-src:"
 DESTINATION="gdrive-dst:OneDrive Migration"
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG="$ROOT/rclone.conf"
+CONFIG="${1:-$ROOT/rclone.conf}"
 RCLONE="$ROOT/bin/rclone"
 REPORT_DIR="$ROOT/reports"
 
@@ -106,7 +106,7 @@ verify() {
   return 2
 }
 
-[[ -f "$CONFIG" ]] || die "Missing remote rclone.conf: $CONFIG"
+[[ -f "$CONFIG" ]] || die "Missing rclone.conf: $CONFIG"
 chmod 600 "$CONFIG"
 mkdir -p "$REPORT_DIR"
 
