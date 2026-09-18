@@ -5,6 +5,8 @@ This is intentionally a two-step workflow:
 1. Run `setup-auth.ps1` on Windows to authenticate `onedrive-src` and `gdrive-dst` and produce `rclone.conf`.
 2. Open `colab-migrate.ipynb` in Google Colab, run the cells in order, upload that `rclone.conf`, then let Colab perform the transfer.
 
+If a migration has already run and you only want to verify/resume it, use `colab-check-resume.ipynb`. It checks first; if the destination is complete, it does nothing. If files are missing or have different sizes, it resumes with `rclone copy` and verifies again.
+
 ## Windows authentication
 
 Open PowerShell in this folder and run:
@@ -31,6 +33,10 @@ Open `colab-migrate.ipynb` in Google Colab and run all cells in order. The noteb
 - verifies every source path exists at the destination with the same size using `rclone check --one-way --size-only`.
 
 A rerun is safe: `rclone copy` skips matching destination files and never deletes destination files. It never writes to or deletes from OneDrive.
+
+## Check / resume an existing migration
+
+Open `colab-check-resume.ipynb` and run its single code cell. It checks the existing `OneDrive Migration` folder first. If verification passes, no copy is started. Otherwise it resumes with `rclone copy --size-only`, shows one-line transfer stats every 10 seconds, and runs the same verification again.
 
 ### Verification limit
 

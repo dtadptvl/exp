@@ -37,7 +37,7 @@ jobs:
       - name: Build distributable bundle
         run: |
           mkdir -p .dist
-          cp migration/setup-auth.ps1 migration/colab-migrate.ipynb migration/README.md .dist/
+          cp migration/setup-auth.ps1 migration/colab-migrate.ipynb migration/colab-check-resume.ipynb migration/README.md .dist/
           cd .dist && zip -9 ../onedrive-gdrive-migration.zip ./*
       - uses: actions/upload-artifact@v4
         with:
