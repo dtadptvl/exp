@@ -1,8 +1,8 @@
 # OneDrive -> Google Drive via rclone
 
-The current recommended path is the home-server workflow. Colab notebooks remain in this folder only as earlier experiments.
+The recommended path is now the home-server workflow. Colab notebooks remain only as earlier experiments.
 
-## 1. Windows authentication
+## Windows authentication
 
 Run:
 
@@ -10,51 +10,47 @@ Run:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup-auth.ps1
 ```
 
-This creates `rclone.conf` with:
+This creates `rclone.conf` with a read-only OneDrive source and personal Google Drive destination.
 
-- `onedrive-src:` — Microsoft OneDrive source, read-only scopes;
-- `gdrive-dst:` — personal Google Drive destination.
+## Fresh migration on home server
 
-Keep `rclone.conf` private. It is git-ignored.
+Put these files together on Windows:
 
-## 2. Run on the home server
+- `rclone.conf`
+- `home-server-migrate.ps1`
+- `home-server-migrate.sh`
 
-Requirements on Windows: built-in OpenSSH `ssh` and `scp`.
-
-From the folder containing `rclone.conf`, `home-server-migrate.ps1`, and `home-server-migrate.sh`:
+Then run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\home-server-migrate.ps1
 ```
 
-Default SSH target is `home@minipc`. The launcher:
+Defaults:
 
-1. connects to the Linux home server;
-2. uploads the shell script;
-3. uploads `rclone.conf` only to a private temporary directory under `/tmp`;
-4. installs a portable rclone under `~/.local/share/onedrive-gdrive-migration/bin/` if needed, without sudo;
-5. validates both remotes;
-6. checks `onedrive-src:` against `gdrive-dst:OneDrive Migration`;
-7. if complete, exits without copying;
-8. if files are missing or have a different size, resumes with `rclone copy --size-only`;
-9. verifies again;
-10. retrieves any refreshed OAuth tokens back into the local Windows `rclone.conf` and removes the temporary remote config directory.
+- SSH server: `home@minipc`
+- source: `onedrive-src:`
+- destination: `gdrive-dst:OneDrive Migration 2`
 
-The persistent home-server directory contains only rclone, the shell script, and verification reports — not OAuth credentials.
+The old `OneDrive Migration` folder is untouched.
 
-It never uses `sync`, `move`, or source deletion.
+The migration runs in the foreground through an SSH TTY. Press **Ctrl+C** at any time to cancel. The remote shell traps the interrupt and terminates the foreground migration; source data is never modified.
 
-To use another SSH target:
+After a successful copy, the script runs `rclone check --one-way --size-only`.
+
+To use another fresh destination folder:
 
 ```powershell
-.\home-server-migrate.ps1 -Server user@host
+.\home-server-migrate.ps1 -DestinationFolder "OneDrive Migration 3"
 ```
 
-### Verification semantics
+The launcher keeps `rclone.conf` only in a private temporary directory on the home server during the run, retrieves refreshed OAuth tokens afterward, then removes the temporary remote config.
 
-Cross-cloud verification uses `rclone check --one-way --size-only`. Every source file must exist at the destination with the same size. Extra files already present in Google Drive do not cause failure.
+No `sync`, `move`, source deletion, or destination deletion is used.
 
-The resume copy also uses `--size-only`, so same-size files are skipped and missing/different-size files are transferred again. This matches the verification criterion and avoids unnecessary retransfers.
+### Interrupted run
+
+If you cancel with Ctrl+C, already completed uploads may remain in the new destination folder. Running the same command again is safe: `rclone copy --size-only` skips matching completed files and continues the rest. If you truly want another completely clean attempt, choose another new `-DestinationFolder`.
 
 ### OneNote limitation
 

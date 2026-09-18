@@ -43,21 +43,28 @@ class MigrationAssetsTest(unittest.TestCase):
             for token in ('"sync"', '"move"', '"delete"', '"purge"'):
                 self.assertNotIn(token, code)
 
-    def test_home_server_defaults_and_safety(self):
+    def test_home_server_fresh_migration_and_ctrl_c(self):
         launcher = HOME_PS1.read_text(encoding="utf-8")
         remote = HOME_SH.read_text(encoding="utf-8")
         self.assertIn('home@minipc', launcher)
+        self.assertIn('OneDrive Migration 2', launcher)
+        self.assertIn('ssh -tt', launcher)
+        self.assertIn('Press Ctrl+C', launcher)
+        self.assertIn('trap cancel INT TERM HUP', remote)
+        self.assertIn('DESTINATION="gdrive-dst:${DESTINATION_FOLDER}"', remote)
+        self.assertIn('"$RCLONE" copy', remote)
+        self.assertIn('"$RCLONE" check', remote)
+        self.assertIn('--one-way', remote)
+        self.assertIn('--size-only', remote)
+        self.assertNotIn('Checking existing folder', remote)
+        for command in ('"$RCLONE" sync', '"$RCLONE" move', '"$RCLONE" delete', '"$RCLONE" purge'):
+            self.assertNotIn(command, remote)
+
+    def test_home_server_credentials_are_temporary(self):
+        launcher = HOME_PS1.read_text(encoding="utf-8")
         self.assertIn('mktemp -d /tmp/onedrive-gdrive-migration.XXXXXX', launcher)
         self.assertIn("rm -rf '$RemoteRuntime'", launcher)
         self.assertIn('remote-returned', launcher)
-        self.assertIn('gdrive-dst:OneDrive Migration', remote)
-        self.assertIn('"$RCLONE" check', remote)
-        self.assertIn('"$RCLONE" copy', remote)
-        self.assertIn('--one-way', remote)
-        self.assertIn('--size-only', remote)
-        self.assertIn('if (( rc == 0 ))', remote)
-        for command in ('"$RCLONE" sync', '"$RCLONE" move', '"$RCLONE" delete', '"$RCLONE" purge'):
-            self.assertNotIn(command, remote)
 
     def test_expected_remotes_and_read_only_source_config(self):
         ps1 = PS1.read_text(encoding="utf-8")

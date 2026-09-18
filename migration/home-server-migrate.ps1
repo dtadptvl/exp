@@ -1,6 +1,7 @@
 param(
     [string]$Server = "home@minipc",
-    [string]$Config = (Join-Path $PSScriptRoot "rclone.conf")
+    [string]$Config = (Join-Path $PSScriptRoot "rclone.conf"),
+    [string]$DestinationFolder = "OneDrive Migration 2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,10 @@ $LocalReturnedConfig = $null
 try {
     Require-Command "ssh"
     Require-Command "scp"
+
+    if ($DestinationFolder -notmatch '^[A-Za-z0-9 ._-]+$') {
+        throw "DestinationFolder may contain only letters, numbers, spaces, dot, underscore, and hyphen."
+    }
 
     $Config = [System.IO.Path]::GetFullPath($Config)
     $RemoteScriptLocal = Join-Path $PSScriptRoot "home-server-migrate.sh"
@@ -77,12 +82,14 @@ try {
     Check-ExitCode "Remote permission setup"
 
     Write-Host ""
-    Write-Host "Running check/resume on $Server..." -ForegroundColor Cyan
+    Write-Host "Starting fresh migration on $Server" -ForegroundColor Cyan
     Write-Host "Source:      onedrive-src:" -ForegroundColor DarkGray
-    Write-Host "Destination: gdrive-dst:OneDrive Migration" -ForegroundColor DarkGray
+    Write-Host "Destination: gdrive-dst:$DestinationFolder" -ForegroundColor DarkGray
+    Write-Host "Press Ctrl+C at any time to cancel." -ForegroundColor Yellow
     Write-Host ""
 
-    & ssh $Server "'$RemoteScript' '$RemoteConfig'"
+    # Force a remote TTY so Ctrl+C is delivered to the foreground rclone process.
+    & ssh -tt $Server "'$RemoteScript' '$RemoteConfig' '$DestinationFolder'"
     Check-ExitCode "Remote migration"
 }
 catch {
@@ -120,7 +127,7 @@ finally {
 
 if ($FailureMessage) {
     Write-Host ""
-    Write-Host "FAILED: $FailureMessage" -ForegroundColor Red
+    Write-Host "STOPPED/FAILED: $FailureMessage" -ForegroundColor Red
     exit 1
 }
 

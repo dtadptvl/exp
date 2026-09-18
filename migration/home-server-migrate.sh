@@ -2,11 +2,19 @@
 set -Eeuo pipefail
 
 SOURCE="onedrive-src:"
-DESTINATION="gdrive-dst:OneDrive Migration"
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="${1:-$ROOT/rclone.conf}"
+DESTINATION_FOLDER="${2:-OneDrive Migration 2}"
+DESTINATION="gdrive-dst:${DESTINATION_FOLDER}"
 RCLONE="$ROOT/bin/rclone"
 REPORT_DIR="$ROOT/reports"
+
+cancel() {
+  trap - INT TERM HUP
+  printf '\nCANCELLED by user. No source data was changed.\n' >&2
+  exit 130
+}
+trap cancel INT TERM HUP
 
 die() {
   printf '\nFAILED: %s\n' "$*" >&2
@@ -56,15 +64,10 @@ preview_report() {
   sed -n '1,30p' "$file"
 }
 
-VERIFY_MISSING=0
-VERIFY_DIFFER=0
-VERIFY_ERRORS=0
-
 verify() {
-  local tag="$1"
-  local missing="$REPORT_DIR/${tag}-missing-on-dst.txt"
-  local differ="$REPORT_DIR/${tag}-different.txt"
-  local errors="$REPORT_DIR/${tag}-errors.txt"
+  local missing="$REPORT_DIR/final-missing-on-dst.txt"
+  local differ="$REPORT_DIR/final-different.txt"
+  local errors="$REPORT_DIR/final-errors.txt"
 
   rm -f "$missing" "$differ" "$errors"
 
@@ -83,27 +86,22 @@ verify() {
   set -e
 
   touch "$missing" "$differ" "$errors"
-  VERIFY_MISSING="$(wc -l < "$missing" | tr -d ' ')"
-  VERIFY_DIFFER="$(wc -l < "$differ" | tr -d ' ')"
-  VERIFY_ERRORS="$(wc -l < "$errors" | tr -d ' ')"
+  local missing_count differ_count error_count
+  missing_count="$(wc -l < "$missing" | tr -d ' ')"
+  differ_count="$(wc -l < "$differ" | tr -d ' ')"
+  error_count="$(wc -l < "$errors" | tr -d ' ')"
 
   printf 'Check result: missing=%s, different_size=%s, errors=%s\n' \
-    "$VERIFY_MISSING" "$VERIFY_DIFFER" "$VERIFY_ERRORS"
+    "$missing_count" "$differ_count" "$error_count"
 
   if (( rc == 0 )); then
     return 0
   fi
-  if (( VERIFY_ERRORS > 0 )); then
-    preview_report "$errors" "check errors"
-    return 2
-  fi
-  if (( VERIFY_MISSING > 0 || VERIFY_DIFFER > 0 )); then
-    preview_report "$missing" "missing on Google Drive"
-    preview_report "$differ" "different size"
-    return 1
-  fi
 
-  return 2
+  preview_report "$missing" "missing on Google Drive"
+  preview_report "$differ" "different size"
+  preview_report "$errors" "check errors"
+  return "$rc"
 }
 
 [[ -f "$CONFIG" ]] || die "Missing rclone.conf: $CONFIG"
@@ -126,24 +124,8 @@ printf '\nValidating OneDrive access...\n'
 printf 'Validating Google Drive access...\n'
 "$RCLONE" lsf "gdrive-dst:" --config "$CONFIG" --max-depth 1 >/dev/null
 
-printf '\nChecking existing folder: OneDrive Migration\n'
-set +e
-verify "before"
-check_rc=$?
-set -e
-
-case "$check_rc" in
-  0)
-    printf '\nCOMPLETE: every OneDrive file is already present with the same size. Nothing to copy.\n'
-    exit 0
-    ;;
-  1)
-    printf '\nINCOMPLETE: resuming copy. Existing same-size files will be skipped.\n'
-    ;;
-  *)
-    die "Verification could not complete reliably. Copy was not started."
-    ;;
-esac
+printf '\nFresh migration target: %s\n' "$DESTINATION"
+printf 'Press Ctrl+C to cancel.\n\n'
 
 "$RCLONE" copy "$SOURCE" "$DESTINATION" \
   --config "$CONFIG" \
@@ -154,14 +136,9 @@ esac
   --stats 10s \
   --stats-one-line-date
 
-printf '\nCopy finished. Verifying again...\n'
-set +e
-verify "after"
-final_rc=$?
-set -e
-
-if (( final_rc == 0 )); then
-  printf '\nCOMPLETE: resumed copy finished and verification passed.\n'
+printf '\nCopy finished. Verifying...\n'
+if verify; then
+  printf '\nCOMPLETE: migration finished and verification passed.\n'
   exit 0
 fi
 
