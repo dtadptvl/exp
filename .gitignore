@@ -1,0 +1,8 @@
+# OAuth/token-bearing rclone configuration
+rclone.conf
+**/rclone.conf
+
+# Local test/build output
+__pycache__/
+*.pyc
+.dist/
