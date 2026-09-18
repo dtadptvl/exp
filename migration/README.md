@@ -1,47 +1,57 @@
-# OneDrive -> Google Drive via rclone + Colab
+# OneDrive -> Google Drive via rclone
 
-This is intentionally a two-step workflow:
+The current recommended path is the home-server workflow. Colab notebooks remain in this folder only as earlier experiments.
 
-1. Run `setup-auth.ps1` on Windows to authenticate `onedrive-src` and `gdrive-dst` and produce `rclone.conf`.
-2. Open `colab-migrate.ipynb` in Google Colab, run the cells in order, upload that `rclone.conf`, then let Colab perform the transfer.
+## 1. Windows authentication
 
-If a migration has already run and you only want to verify/resume it, use `colab-check-resume.ipynb`. It checks first; if the destination is complete, it does nothing. If files are missing or have different sizes, it resumes with `rclone copy` and verifies again.
-
-## Windows authentication
-
-Open PowerShell in this folder and run:
+Run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup-auth.ps1
 ```
 
-The script downloads a temporary rclone binary, opens browser-based authentication for Microsoft and Google, validates both remotes, writes `rclone.conf` next to the script, then removes the temporary rclone files.
+This creates `rclone.conf` with:
 
-The OneDrive remote requests read-only scopes. If the Microsoft 365 tenant blocks user consent, rclone will fail clearly; an administrator must allow the rclone OAuth app or the tenant must use its own permitted OAuth app registration.
+- `onedrive-src:` — Microsoft OneDrive source, read-only scopes;
+- `gdrive-dst:` — personal Google Drive destination.
 
-`rclone.conf` contains OAuth tokens. It is git-ignored and must not be committed or shared.
+Keep `rclone.conf` private. It is git-ignored.
 
-## Colab migration
+## 2. Run on the home server
 
-Open `colab-migrate.ipynb` in Google Colab and run all cells in order. The notebook:
+Requirements on Windows: built-in OpenSSH `ssh` and `scp`.
 
-- installs current rclone in the Colab VM;
-- asks you to upload `rclone.conf`;
-- validates both remotes;
-- copies `onedrive-src:` to `gdrive-dst:OneDrive Migration` with `rclone copy`;
-- shows progress;
-- verifies every source path exists at the destination with the same size using `rclone check --one-way --size-only`.
+From the folder containing `rclone.conf`, `home-server-migrate.ps1`, and `home-server-migrate.sh`:
 
-A rerun is safe: `rclone copy` skips matching destination files and never deletes destination files. It never writes to or deletes from OneDrive.
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\home-server-migrate.ps1
+```
 
-## Check / resume an existing migration
+Default SSH target is `home@minipc`. The launcher:
 
-Open `colab-check-resume.ipynb` and run its single code cell. It checks the existing `OneDrive Migration` folder first. If verification passes, no copy is started. Otherwise it resumes with `rclone copy --size-only`, shows one-line transfer stats every 10 seconds, and runs the same verification again.
+1. connects to the Linux home server;
+2. uploads the private `rclone.conf` and the migration shell script;
+3. installs a portable rclone under `~/.local/share/onedrive-gdrive-migration/bin/` if needed, without sudo;
+4. validates both remotes;
+5. checks `onedrive-src:` against `gdrive-dst:OneDrive Migration`;
+6. if complete, exits without copying;
+7. if files are missing or have a different size, resumes with `rclone copy --size-only`;
+8. verifies again.
 
-### Verification limit
+It never uses `sync`, `move`, or source deletion.
 
-OneDrive and Google Drive do not expose a common checksum suitable for direct cross-cloud verification, so the practical post-copy check verifies path + size. A byte-for-byte `rclone check --download` would download both sides again and is intentionally not used because it roughly doubles transfer traffic.
+To use another SSH target:
+
+```powershell
+.\home-server-migrate.ps1 -Server user@host
+```
+
+### Verification semantics
+
+Cross-cloud verification uses `rclone check --one-way --size-only`. Every source file must exist at the destination with the same size. Extra files already present in Google Drive do not cause failure.
+
+The resume copy also uses `--size-only`, so same-size files are skipped and missing/different-size files are transferred again. This matches the verification criterion and avoids unnecessary retransfers.
 
 ### OneNote limitation
 
-rclone hides OneNote notebook packages by default because they cannot be opened/copied as normal files through the OneDrive backend. Export OneNote notebooks separately if the account contains them.
+rclone hides OneNote notebook packages by default because they cannot be copied as normal files through the OneDrive backend. Export OneNote notebooks separately if the account contains them.
