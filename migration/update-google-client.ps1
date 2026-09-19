@@ -1,5 +1,5 @@
 param(
-    [string]$OutputConfig = (Join-Path $PSScriptRoot "rclone.conf"),
+    [string]$Config = (Join-Path $PSScriptRoot "rclone.conf"),
     [string]$GoogleClientId = "",
     [string]$GoogleClientSecret = ""
 )
@@ -7,23 +7,26 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$SourceRemote = "onedrive-src"
-$DestinationRemote = "gdrive-dst"
 $DownloadUrl = "https://downloads.rclone.org/rclone-current-windows-amd64.zip"
-$WorkDir = Join-Path $env:TEMP "onedrive-gdrive-rclone-setup"
+$WorkDir = Join-Path $env:TEMP "onedrive-gdrive-google-oauth-update"
 $ZipPath = Join-Path $WorkDir "rclone.zip"
 $ExtractPath = Join-Path $WorkDir "rclone"
 
 function Invoke-Rclone {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    & $script:RcloneExe --config $OutputConfig @Arguments
+    & $script:RcloneExe --config $Config @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "rclone failed (exit code $LASTEXITCODE)."
     }
 }
 
 try {
+    $Config = [System.IO.Path]::GetFullPath($Config)
+    if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) {
+        throw "Missing rclone.conf: $Config"
+    }
+
     if ([string]::IsNullOrWhiteSpace($GoogleClientId)) {
         $GoogleClientId = Read-Host "Paste your Google OAuth Desktop client ID"
     }
@@ -31,7 +34,7 @@ try {
         $GoogleClientSecret = Read-Host "Paste your Google OAuth Desktop client secret"
     }
     if ([string]::IsNullOrWhiteSpace($GoogleClientId) -or [string]::IsNullOrWhiteSpace($GoogleClientSecret)) {
-        throw "Google client ID and client secret are required. The shared rclone Google client is not used."
+        throw "Google client ID and client secret are required."
     }
 
     Write-Host "Preparing rclone..." -ForegroundColor Cyan
@@ -49,44 +52,28 @@ try {
         throw "Downloaded archive did not contain rclone.exe."
     }
 
-    $OutputConfig = [System.IO.Path]::GetFullPath($OutputConfig)
-    $OutputDir = Split-Path -Parent $OutputConfig
-    if (-not (Test-Path $OutputDir)) {
-        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-    }
-    if (Test-Path $OutputConfig) {
-        Remove-Item -LiteralPath $OutputConfig -Force
+    $remotes = & $script:RcloneExe --config $Config listremotes
+    if ($LASTEXITCODE -ne 0 -or $remotes -notcontains "gdrive-dst:") {
+        throw "rclone.conf does not contain gdrive-dst:."
     }
 
-    Write-Host "`n1/2 Sign in to Microsoft OneDrive in the browser window." -ForegroundColor Cyan
-    Write-Host "Only read permissions are requested for the source." -ForegroundColor DarkGray
-    Invoke-Rclone config create $SourceRemote onedrive `
-        access_scopes="Files.Read Files.Read.All Sites.Read.All offline_access"
-
-    Write-Host "`n2/2 Sign in to the personal Google Drive account in the browser window." -ForegroundColor Cyan
-    Invoke-Rclone config create $DestinationRemote drive `
+    Write-Host "Updating gdrive-dst to your private Google OAuth client..." -ForegroundColor Cyan
+    Invoke-Rclone config update gdrive-dst `
         client_id=$GoogleClientId `
-        client_secret=$GoogleClientSecret `
-        scope=drive
+        client_secret=$GoogleClientSecret
 
-    Write-Host "`nValidating OneDrive..." -ForegroundColor Cyan
-    Invoke-Rclone lsf "$SourceRemote`:" --max-depth 1 | Out-Null
+    Write-Host "Re-authenticate Google Drive in the browser window." -ForegroundColor Cyan
+    Invoke-Rclone config reconnect "gdrive-dst:"
 
     Write-Host "Validating Google Drive..." -ForegroundColor Cyan
-    Invoke-Rclone lsf "$DestinationRemote`:" --max-depth 1 --tpslimit 8 --tpslimit-burst 1 | Out-Null
-
-    if (-not (Test-Path $OutputConfig)) {
-        throw "rclone.conf was not created."
-    }
+    Invoke-Rclone lsf "gdrive-dst:" --max-depth 1 --tpslimit 8 --tpslimit-burst 1 | Out-Null
 
     Write-Host "`nSUCCESS" -ForegroundColor Green
-    Write-Host "Config created at: $OutputConfig"
-    Write-Host "This config uses your own Google OAuth client, not rclone's shared client."
-    Write-Host "Keep rclone.conf private."
+    Write-Host "gdrive-dst now uses your own Google OAuth client."
+    Write-Host "You can rerun home-server-migrate.ps1 and continue OneDrive Migration 2."
 }
 catch {
     Write-Host "`nFAILED: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "No migration was started and no source data was modified." -ForegroundColor Yellow
     exit 1
 }
 finally {

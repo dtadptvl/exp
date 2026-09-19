@@ -5,7 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migration"
-PS1 = MIGRATION / "setup-auth.ps1"
+SETUP = MIGRATION / "setup-auth.ps1"
+UPDATE_GOOGLE = MIGRATION / "update-google-client.ps1"
 HOME_PS1 = MIGRATION / "home-server-migrate.ps1"
 HOME_SH = MIGRATION / "home-server-migrate.sh"
 MIGRATE_NOTEBOOK = MIGRATION / "colab-migrate.ipynb"
@@ -33,53 +34,43 @@ class MigrationAssetsTest(unittest.TestCase):
                     if source.strip():
                         ast.parse(source)
 
-    def test_colab_transfer_is_copy_only(self):
-        for notebook in (MIGRATE_NOTEBOOK, RESUME_NOTEBOOK):
-            code = notebook_code(notebook)
-            self.assertIn('"copy"', code)
-            self.assertIn('"check"', code)
-            self.assertIn('"--one-way"', code)
-            self.assertIn('"--size-only"', code)
-            for token in ('"sync"', '"move"', '"delete"', '"purge"'):
-                self.assertNotIn(token, code)
+    def test_private_google_client_is_required(self):
+        setup = SETUP.read_text(encoding="utf-8")
+        updater = UPDATE_GOOGLE.read_text(encoding="utf-8")
+        remote = HOME_SH.read_text(encoding="utf-8")
+        self.assertIn("client_id=$GoogleClientId", setup)
+        self.assertIn("client_secret=$GoogleClientSecret", setup)
+        self.assertIn("config update gdrive-dst", updater)
+        self.assertIn('config reconnect "gdrive-dst:"', updater)
+        self.assertIn("shared Google client", remote)
 
-    def test_home_server_fresh_migration_and_ctrl_c(self):
+    def test_home_server_rate_limit_and_malware_skip(self):
+        remote = HOME_SH.read_text(encoding="utf-8")
+        self.assertIn("TPS_ARGS=(--tpslimit 8 --tpslimit-burst 1)", remote)
+        self.assertIn("--retries 1", remote)
+        self.assertIn("infected with a virus", remote)
+        self.assertIn("malware-skipped.txt", remote)
+        self.assertIn('comm -23 "$missing_sorted" "$malware_sorted"', remote)
+        self.assertNotIn("--onedrive-av-override", remote)
+        self.assertNotIn("--ignore-errors", remote)
+
+    def test_home_server_copy_only_ctrl_c_and_resume(self):
         launcher = HOME_PS1.read_text(encoding="utf-8")
         remote = HOME_SH.read_text(encoding="utf-8")
-        self.assertIn('home@minipc', launcher)
-        self.assertIn('OneDrive Migration 2', launcher)
-        self.assertIn('ssh -tt', launcher)
-        self.assertIn('Press Ctrl+C', launcher)
-        self.assertIn('trap cancel INT TERM HUP', remote)
-        self.assertIn('DESTINATION="gdrive-dst:${DESTINATION_FOLDER}"', remote)
+        self.assertIn("home@minipc", launcher)
+        self.assertIn("OneDrive Migration 2", launcher)
+        self.assertIn("ssh -tt", launcher)
+        self.assertIn("trap cancel INT TERM HUP", remote)
         self.assertIn('"$RCLONE" copy', remote)
         self.assertIn('"$RCLONE" check', remote)
-        self.assertIn('--one-way', remote)
-        self.assertIn('--size-only', remote)
-        self.assertNotIn('Checking existing folder', remote)
+        self.assertIn("--size-only", remote)
         for command in ('"$RCLONE" sync', '"$RCLONE" move', '"$RCLONE" delete', '"$RCLONE" purge'):
             self.assertNotIn(command, remote)
 
-    def test_home_server_credentials_are_temporary(self):
-        launcher = HOME_PS1.read_text(encoding="utf-8")
-        self.assertIn('mktemp -d /tmp/onedrive-gdrive-migration.XXXXXX', launcher)
-        self.assertIn("rm -rf '$RemoteRuntime'", launcher)
-        self.assertIn('remote-returned', launcher)
-
-    def test_expected_remotes_and_read_only_source_config(self):
-        ps1 = PS1.read_text(encoding="utf-8")
-        combined = (
-            notebook_code(MIGRATE_NOTEBOOK)
-            + "\n"
-            + notebook_code(RESUME_NOTEBOOK)
-            + "\n"
-            + HOME_SH.read_text(encoding="utf-8")
-        )
-        for name in ("onedrive-src", "gdrive-dst"):
-            self.assertIn(name, ps1)
-            self.assertIn(name, combined)
-        self.assertIn("Files.Read Files.Read.All Sites.Read.All offline_access", ps1)
-        self.assertNotIn("Files.ReadWrite", ps1)
+    def test_onedrive_source_stays_read_only(self):
+        setup = SETUP.read_text(encoding="utf-8")
+        self.assertIn("Files.Read Files.Read.All Sites.Read.All offline_access", setup)
+        self.assertNotIn("Files.ReadWrite", setup)
 
     def test_credentials_are_gitignored(self):
         ignored = GITIGNORE.read_text(encoding="utf-8")

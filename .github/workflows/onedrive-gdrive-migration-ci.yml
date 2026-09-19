@@ -26,6 +26,7 @@ jobs:
         run: |
           foreach ($file in @(
             './migration/setup-auth.ps1',
+            './migration/update-google-client.ps1',
             './migration/home-server-migrate.ps1'
           )) {
             $errors = $null
@@ -44,7 +45,7 @@ jobs:
       - name: Build home-server bundle
         run: |
           mkdir -p .dist
-          cp migration/setup-auth.ps1 migration/home-server-migrate.ps1 migration/home-server-migrate.sh migration/README.md .dist/
+          cp migration/setup-auth.ps1 migration/update-google-client.ps1 migration/home-server-migrate.ps1 migration/home-server-migrate.sh migration/README.md .dist/
           cd .dist && zip -9 ../onedrive-gdrive-home-server.zip ./*
       - uses: actions/upload-artifact@v4
         with:

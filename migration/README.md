@@ -1,26 +1,30 @@
 # OneDrive -> Google Drive via rclone
 
-The recommended path is now the home-server workflow. Colab notebooks remain only as earlier experiments.
+Recommended workflow: Windows authentication/configuration + Linux home-server transfer.
 
-## Windows authentication
+## Google OAuth client required
 
-Run:
+Do not use rclone's shared Google Drive OAuth client. Create your own Google Cloud OAuth **Desktop app** client with the Google Drive API enabled, then keep the client ID and client secret handy.
+
+For an existing `rclone.conf`, run:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup-auth.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-google-client.ps1
 ```
 
-This creates `rclone.conf` with a read-only OneDrive source and personal Google Drive destination.
+Paste the client ID and secret when prompted, then complete the Google browser sign-in. The script updates only `gdrive-dst`, reconnects it, and validates access.
 
-## Fresh migration on home server
+For a completely new config, `setup-auth.ps1` now asks for the same private Google client credentials during setup.
 
-Put these files together on Windows:
+## Home-server migration
+
+Keep these files together on Windows:
 
 - `rclone.conf`
 - `home-server-migrate.ps1`
 - `home-server-migrate.sh`
 
-Then run:
+Run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\home-server-migrate.ps1
@@ -28,30 +32,32 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\home-server-migrate.ps
 
 Defaults:
 
-- SSH server: `home@minipc`
+- SSH: `home@minipc`
 - source: `onedrive-src:`
 - destination: `gdrive-dst:OneDrive Migration 2`
 
-The old `OneDrive Migration` folder is untouched.
+The transfer uses `rclone copy --size-only`, so rerunning the same command skips matching completed files and continues the rest. It never uses `sync`, `move`, or source deletion.
 
-The migration runs in the foreground through an SSH TTY. Press **Ctrl+C** at any time to cancel. The remote shell traps the interrupt and terminates the foreground migration; source data is never modified.
+Google/HTTP API traffic is capped at about 8 transactions/s with a burst of 1 to avoid hammering Drive API quotas.
 
-After a successful copy, the script runs `rclone check --one-way --size-only`.
+### Malware-flagged OneDrive files
 
-To use another fresh destination folder:
+The script does **not** use `--onedrive-av-override`.
 
-```powershell
-.\home-server-migrate.ps1 -DestinationFolder "OneDrive Migration 3"
-```
+If OneDrive refuses a file because Microsoft flags it as malware, rclone records the path and continues the migration pass. Final verification permits only those exact malware-blocked paths to remain missing. Any other missing file, size mismatch, or verification error still fails the run.
 
-The launcher keeps `rclone.conf` only in a private temporary directory on the home server during the run, retrieves refreshed OAuth tokens afterward, then removes the temporary remote config.
+The skipped paths are recorded under:
 
-No `sync`, `move`, source deletion, or destination deletion is used.
+`~/.local/share/onedrive-gdrive-migration/reports/malware-skipped.txt`
 
-### Interrupted run
+### Ctrl+C
 
-If you cancel with Ctrl+C, already completed uploads may remain in the new destination folder. Running the same command again is safe: `rclone copy --size-only` skips matching completed files and continues the rest. If you truly want another completely clean attempt, choose another new `-DestinationFolder`.
+The migration runs through an SSH TTY. Press **Ctrl+C** to cancel the foreground rclone process. Source OneDrive data is never modified.
 
-### OneNote limitation
+### Credentials
 
-rclone hides OneNote notebook packages by default because they cannot be copied as normal files through the OneDrive backend. Export OneNote notebooks separately if the account contains them.
+`rclone.conf` is uploaded only to a private temporary directory on the home server for the duration of a run. Refreshed OAuth tokens are copied back to Windows, then the temporary remote config is removed.
+
+### OneNote
+
+rclone hides OneNote notebook packages by default because they cannot be copied as ordinary files through the OneDrive backend. Export them separately if required.
