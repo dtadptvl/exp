@@ -14,10 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rebuild exact artifact from Base64
+      - name: Rebuild exact artifact from Base64 chunks
         shell: powershell
         run: |
-          $b64 = (Get-Content -LiteralPath "artifacts/9RouterKeeper-v1.1.zip.b64" -Raw).Trim()
+          $parts = Get-ChildItem -LiteralPath artifacts -Filter "9RouterKeeper-v1.1.part*.b64" | Sort-Object Name
+          $b64 = (($parts | ForEach-Object { (Get-Content -LiteralPath $_.FullName -Raw).Trim() }) -join "")
+          if ($b64.Length -ne 16388) { throw "Base64 length mismatch: $($b64.Length)" }
           [IO.File]::WriteAllBytes("9RouterKeeper-v1.1.zip", [Convert]::FromBase64String($b64))
           $expected = "d702398609c04ee59073ff69ebe303a729a9688281f3da4ab789d7211ca7126a"
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "9RouterKeeper-v1.1.zip").Hash.ToLowerInvariant()
