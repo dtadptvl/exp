@@ -17,7 +17,7 @@ jobs:
       - name: Verify artifact hash
         shell: powershell
         run: |
-          $expected = "d702398609c04ee59073ff69ebe303a729a9688281f3da4ab789d7211ca7126a"
+          $expected = "17ce09f3716c1bf6e3325b366de630c5296106ee564208e7bd14c7bb15aae77a"
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "artifacts/9RouterKeeper-v1.1.zip").Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "SHA256 mismatch: $actual" }
 
