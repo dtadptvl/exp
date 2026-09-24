@@ -14,18 +14,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify artifact hash
+      - name: Rebuild exact artifact from Base64
         shell: powershell
         run: |
-          $expected = "17ce09f3716c1bf6e3325b366de630c5296106ee564208e7bd14c7bb15aae77a"
-          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "artifacts/9RouterKeeper-v1.1.zip").Hash.ToLowerInvariant()
+          $b64 = (Get-Content -LiteralPath "artifacts/9RouterKeeper-v1.1.zip.b64" -Raw).Trim()
+          [IO.File]::WriteAllBytes("9RouterKeeper-v1.1.zip", [Convert]::FromBase64String($b64))
+          $expected = "d702398609c04ee59073ff69ebe303a729a9688281f3da4ab789d7211ca7126a"
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "9RouterKeeper-v1.1.zip").Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "SHA256 mismatch: $actual" }
 
       - name: Expand artifact
         shell: powershell
         run: |
           New-Item -ItemType Directory -Path keeper -Force | Out-Null
-          Expand-Archive -LiteralPath "artifacts/9RouterKeeper-v1.1.zip" -DestinationPath keeper -Force
+          Expand-Archive -LiteralPath "9RouterKeeper-v1.1.zip" -DestinationPath keeper -Force
 
       - name: Run Windows integration checks
         shell: powershell
@@ -36,4 +38,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 9RouterKeeper-v1.1-tested
-          path: artifacts/9RouterKeeper-v1.1.zip
+          path: 9RouterKeeper-v1.1.zip
