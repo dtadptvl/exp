@@ -62,9 +62,11 @@ $agentDir = Join-Path $kiloRoot 'agents'
 $backupRoot = Join-Path $kiloRoot 'prime-sub-backups'
 $receiptPath = Join-Path $kiloRoot 'prime-sub-install.json'
 $sourcePrime = Join-Path $PSScriptRoot 'agents\prime.md'
-$sourceSub = Join-Path $PSScriptRoot 'agents\Sub.md'
+$sourceSub = Join-Path $PSScriptRoot 'agents\sub.md'
 $targetPrime = Join-Path $agentDir 'prime.md'
-$targetSub = Join-Path $agentDir 'Sub.md'
+$targetSub = Join-Path $agentDir 'sub.md'
+$existingSubFile = Get-ChildItem -LiteralPath $agentDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'sub.md' } | Select-Object -First 1
+$previousSubName = if ($null -ne $existingSubFile) { $existingSubFile.Name } else { $null }
 
 foreach ($required in @($sourcePrime, $sourceSub)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Package is incomplete: missing $required" }
@@ -75,7 +77,7 @@ New-Item -ItemType Directory -Path $agentDir -Force | Out-Null
 $needsInstall = -not (Same-File $sourcePrime $targetPrime) -or -not (Same-File $sourceSub $targetSub)
 $backupDir = $null
 $hadPrime = Test-Path -LiteralPath $targetPrime -PathType Leaf
-$hadSub = Test-Path -LiteralPath $targetSub -PathType Leaf
+$hadSub = $null -ne $existingSubFile
 
 if ($needsInstall) {
     if ($hadPrime -or $hadSub) {
@@ -83,18 +85,21 @@ if ($needsInstall) {
         $backupDir = Join-Path $backupRoot ("$stamp-" + (Get-Random -Minimum 1000 -Maximum 9999))
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         if ($hadPrime) { Copy-Item -LiteralPath $targetPrime -Destination (Join-Path $backupDir 'prime.md') -Force }
-        if ($hadSub) { Copy-Item -LiteralPath $targetSub -Destination (Join-Path $backupDir 'Sub.md') -Force }
+        if ($hadSub) { Copy-Item -LiteralPath $existingSubFile.FullName -Destination (Join-Path $backupDir 'sub.md') -Force }
     }
 
     Copy-Item -LiteralPath $sourcePrime -Destination $targetPrime -Force
+    # Remove any existing case-variant first so Windows preserves the canonical lowercase filename.
+    if ($hadSub -and (Test-Path -LiteralPath $existingSubFile.FullName -PathType Leaf)) { Remove-Item -LiteralPath $existingSubFile.FullName -Force }
     Copy-Item -LiteralPath $sourceSub -Destination $targetSub -Force
 
     $receipt = [ordered]@{
-        version = 1
+        version = 2
         installed_at = (Get-Date).ToString('o')
         backup_dir = $backupDir
         had_prime = $hadPrime
         had_sub = $hadSub
+        sub_previous_name = $previousSubName
         prime_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetPrime).Hash
         sub_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetSub).Hash
     }
@@ -103,7 +108,7 @@ if ($needsInstall) {
 
 $config = Invoke-KiloJson -Arguments @('debug', 'config') -Label 'kilo debug config'
 $prime = Invoke-KiloJson -Arguments @('debug', 'agent', 'prime') -Label 'kilo debug agent prime'
-$sub = Invoke-KiloJson -Arguments @('debug', 'agent', 'Sub') -Label 'kilo debug agent Sub'
+$sub = Invoke-KiloJson -Arguments @('debug', 'agent', 'sub') -Label 'kilo debug agent sub'
 
 $errors = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -138,7 +143,7 @@ if ($null -eq $router) {
 }
 
 if ($prime.mode -ne 'primary') { $errors.Add("Prime mode resolved to '$($prime.mode)', expected 'primary'.") }
-if ((Permission-Action $prime.permission 'task' 'Sub') -ne 'allow') { $errors.Add('Prime is not allowed to delegate to Sub.') }
+if ((Permission-Action $prime.permission 'task' 'sub') -ne 'allow') { $errors.Add('Prime is not allowed to delegate to sub.') }
 if ((Permission-Action $prime.permission 'task' 'general') -ne 'deny') { $errors.Add('Prime Task permission does not deny non-Sub agents.') }
 
 if ($sub.mode -ne 'subagent') { $errors.Add("Sub mode resolved to '$($sub.mode)', expected 'subagent'.") }
