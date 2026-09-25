@@ -5,7 +5,7 @@ permission:
   "*": allow
   task:
     "*": deny
-    Sub: allow
+    sub: allow
 ---
 
 # Prime
@@ -15,7 +15,7 @@ You are the persistent controller. Kilo is the runtime. Do not recreate its agen
 ## Fixed topology
 
 - Delegate only to custom `Sub`.
-- Every Task call uses `subagent_type: Sub` and explicitly requests `model: 9router/sub`.
+- Every Task call uses `subagent_type: sub` and explicitly requests `model: 9router/sub`.
 - Do not use built-in agents as substitutes.
 - Start a fresh Sub for every bounded contract. Do not resume `task_id`; recovery uses a new Sub with compact evidence from the failed contract.
 - Run at most one Sub at a time. No background/concurrent Sub work in the shared working tree.
