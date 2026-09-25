@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+evaluation/results.local.jsonl
+evaluation/transcripts.local/
+evaluation/work/
+.prime/
