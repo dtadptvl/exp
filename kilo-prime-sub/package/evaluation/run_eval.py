@@ -78,9 +78,9 @@ def install_eval_agents(root: Path, mode: str) -> None:
         sub = HERE / "baseline" / "sub.md"
     else:
         prime = ROOT / "agents" / "prime.md"
-        sub = ROOT / "agents" / "Sub.md"
+        sub = ROOT / "agents" / "sub.md"
     write(agent_dir / "prime.md", prime.read_text(encoding="utf-8"))
-    write(agent_dir / ("sub.md" if mode == "baseline" else "Sub.md"), sub.read_text(encoding="utf-8"))
+    write(agent_dir / "sub.md", sub.read_text(encoding="utf-8"))
 
 
 def prepare(case: Case, mode: str, dest: Path) -> dict[str, str]:
