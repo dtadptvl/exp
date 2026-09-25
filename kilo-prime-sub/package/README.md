@@ -28,6 +28,10 @@ There is no custom scheduler, daemon, task runner, session database, agent regis
 - Sub cannot spawn agents and cannot perform Git mutation/integration operations.
 - Generic step count is not the primary stall/completion/retry mechanism. A high native step ceiling remains only as an emergency circuit breaker pending live evaluation.
 
+## Agent ID casing
+
+The canonical runtime agent ID is lowercase `sub`, backed by `~/.config/kilo/agents/sub.md`. Kilo agent lookup is exact-key/case-sensitive. Older package builds incorrectly installed `Sub.md`; rerunning this package's `setup.cmd` safely migrates that case-variant after backing it up.
+
 ## Install on Windows
 
 Prerequisites:
@@ -45,7 +49,7 @@ setup.cmd
 The installer:
 
 - resolves Kilo's global config directory through `kilo debug paths`;
-- backs up existing global `prime.md` / `Sub.md` when they differ;
+- backs up existing global `prime.md` / `sub.md` when they differ;
 - installs the two agent files;
 - writes a small install receipt for safe rollback;
 - validates effective Prime/Sub topology, model, depth, permissions, timeouts, and version-specific model-selection requirements;
