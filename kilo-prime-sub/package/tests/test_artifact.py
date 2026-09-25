@@ -22,24 +22,25 @@ def fm(path: str) -> str:
 
 def test_exact_runtime_topology() -> None:
     prime = fm("agents/prime.md")
-    sub = fm("agents/Sub.md")
+    sub = fm("agents/sub.md")
     install = read("install.ps1")
     assert "mode: primary" in prime
-    assert '"*": deny' in prime and "Sub: allow" in prime
+    assert '"*": deny' in prime and "sub: allow" in prime
     assert "mode: subagent" in sub
     assert "model: 9router/sub" in sub
     assert re.search(r"^steps:\s*[1-9]\d*\s*$", sub, re.M)
     assert re.search(r"^\s*task:\s*deny\s*$", sub, re.M)
-    assert "Permission-Action $prime.permission 'task' 'Sub'" in install
+    assert "Permission-Action $prime.permission 'task' 'sub'" in install
     assert "Permission-Action $sub.permission 'read' '.prime/state.json'" in install
     assert re.search(r"^\s*doom_loop:\s*deny\s*$", sub, re.M)
-    assert sorted(p.name for p in (ROOT / "agents").glob("*.md")) == ["Sub.md", "prime.md"]
+    assert sorted(p.name for p in (ROOT / "agents").glob("*.md")) == ["prime.md", "sub.md"]
+    assert not (ROOT / "agents" / "Sub.md").exists(), "Sub agent ID must be canonical lowercase to match Kilo exact-key lookup"
 
 
 def test_prime_enforces_fresh_sequential_explicit_sub_model() -> None:
     prime = read("agents/prime.md")
     for needle in (
-        "subagent_type: Sub",
+        "subagent_type: sub",
         "model: 9router/sub",
         "Do not resume `task_id`",
         "Run at most one Sub at a time",
@@ -52,7 +53,7 @@ def test_prime_enforces_fresh_sequential_explicit_sub_model() -> None:
 
 def test_step_count_is_only_emergency_not_primary_control() -> None:
     prime = read("agents/prime.md").lower()
-    sub = read("agents/Sub.md").lower()
+    sub = read("agents/sub.md").lower()
     readme = read("README.md").lower()
     for text in (prime, sub, readme):
         assert "emergency" in text
@@ -62,13 +63,13 @@ def test_step_count_is_only_emergency_not_primary_control() -> None:
 
 
 def test_sub_git_and_state_ownership_boundary() -> None:
-    sub = fm("agents/Sub.md")
+    sub = fm("agents/sub.md")
     assert '"git *": deny' in sub
     for safe in ("git status *", "git diff *", "git show *", "git log *", "git rev-parse *", "git ls-files *"):
         assert f'"{safe}": allow' in sub
     assert re.search(r'^\s*read:\s*$', sub, re.M)
     assert '".prime/state.json": deny' in sub
-    body = read("agents/Sub.md")
+    body = read("agents/sub.md")
     assert "Never read or edit `.prime/state.json`" in body
     for verb in ("commit", "branch", "push", "merge", "rebase", "reset", "checkout", "stash", "add", "worktree"):
         assert verb in body
@@ -115,6 +116,10 @@ def test_installer_never_mutates_kilo_json_and_validates_invariants() -> None:
     assert "task_model_selection" in ps and "7.7.12" in ps
     assert "chunkTimeout" in ps and "9router" in ps
     assert "prime-sub-install.json" in ps
+    assert "agents\\sub.md" in ps
+    assert "debug', 'agent', 'sub" in ps
+    assert "sub_previous_name" in ps
+    assert "Remove-Item -LiteralPath $existingSubFile.FullName" in ps
     assert "Copy-Item" in ps
     # The installer may Set-Content only to its receipt, never to a Kilo config file.
     for line in ps.splitlines():
@@ -132,6 +137,7 @@ def test_uninstall_has_safe_rollback_receipt_and_modification_guard() -> None:
     assert "prime_sha256" in ps and "sub_sha256" in ps
     assert "-Force" in ps
     assert "changed after installation" in ps
+    assert "sub_previous_name" in ps
     assert "Copy-Item" in ps and "Remove-Item" in ps
     for line in ps.splitlines():
         ll = line.lower()
