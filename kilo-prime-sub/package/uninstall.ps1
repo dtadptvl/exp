@@ -17,16 +17,17 @@ if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { throw 'No prime
 $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
 $agentDir = Join-Path $root 'agents'
 $prime = Join-Path $agentDir 'prime.md'
-$sub = Join-Path $agentDir 'Sub.md'
+$sub = Join-Path $agentDir 'sub.md'
+$currentSubFile = Get-ChildItem -LiteralPath $agentDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'sub.md' } | Select-Object -First 1
 
 if (-not $Force) {
     if (Test-Path -LiteralPath $prime -PathType Leaf) {
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $prime).Hash
         if ($hash -ne $receipt.prime_sha256) { throw 'prime.md changed after installation. Use uninstall.ps1 -Force only if you intentionally want to replace it.' }
     }
-    if (Test-Path -LiteralPath $sub -PathType Leaf) {
-        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sub).Hash
-        if ($hash -ne $receipt.sub_sha256) { throw 'Sub.md changed after installation. Use uninstall.ps1 -Force only if you intentionally want to replace it.' }
+    if ($null -ne $currentSubFile -and (Test-Path -LiteralPath $currentSubFile.FullName -PathType Leaf)) {
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $currentSubFile.FullName).Hash
+        if ($hash -ne $receipt.sub_sha256) { throw 'sub.md changed after installation. Use uninstall.ps1 -Force only if you intentionally want to replace it.' }
     }
 }
 
@@ -40,11 +41,13 @@ if ($receipt.had_prime -eq $true) {
 }
 
 if ($receipt.had_sub -eq $true) {
-    $source = Join-Path $backupDir 'Sub.md'
+    $source = Join-Path $backupDir 'sub.md'
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Backup missing: $source" }
-    Copy-Item -LiteralPath $source -Destination $sub -Force
-} elseif (Test-Path -LiteralPath $sub) {
-    Remove-Item -LiteralPath $sub -Force
+    if ($null -ne $currentSubFile -and (Test-Path -LiteralPath $currentSubFile.FullName -PathType Leaf)) { Remove-Item -LiteralPath $currentSubFile.FullName -Force }
+    $restoreName = if ($receipt.PSObject.Properties.Name -contains 'sub_previous_name' -and $receipt.sub_previous_name) { [string]$receipt.sub_previous_name } else { 'Sub.md' }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $agentDir $restoreName) -Force
+} elseif ($null -ne $currentSubFile -and (Test-Path -LiteralPath $currentSubFile.FullName -PathType Leaf)) {
+    Remove-Item -LiteralPath $currentSubFile.FullName -Force
 }
 
 Remove-Item -LiteralPath $receiptPath -Force
