@@ -74,7 +74,7 @@ Expected invariants:
 
 - default primary agent resolves to `prime`;
 - `subagent_depth` resolves to `1`;
-- Prime can Task only `sub`;
+- Prime can Task only canonical lowercase `sub`;
 - Sub mode is `subagent` and configured model is `9router/sub`;
 - Sub cannot invoke Task;
 - Sub `doom_loop` resolves to deny;
