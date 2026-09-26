@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 const positive = (name, fallback) => {
   const raw = process.env[name]
@@ -15,6 +16,7 @@ const TICK_MS = Math.max(5_000, Math.min(30_000, Math.floor(STALL_MS / 6)))
 
 const server = async ({ client, directory }) => {
   const live = new Map()
+  const helper = fileURLToPath(new URL("../prime-sub/prime-state.ps1", import.meta.url))
 
   const mark = (sessionID) => {
     if (!sessionID) return
@@ -27,7 +29,7 @@ const server = async ({ client, directory }) => {
   }
 
   const record = async (item, reason) => {
-    const dir = path.join(directory, ".prime")
+    const dir = path.join(item.directory, ".prime")
     await mkdir(dir, { recursive: true })
     const line = JSON.stringify({
       at: new Date().toISOString(),
@@ -47,13 +49,12 @@ const server = async ({ client, directory }) => {
     try {
       await record(item, reason)
       await client.session.abort(
-        { sessionID: item.sessionID, directory, scope: "tree" },
+        { sessionID: item.sessionID, directory: item.directory, scope: "tree" },
         { throwOnError: true },
       )
     } catch (error) {
-      // Keep one compact local failure record; Prime will reconcile on the next boundary.
       try {
-        const dir = path.join(directory, ".prime")
+        const dir = path.join(item.directory, ".prime")
         await mkdir(dir, { recursive: true })
         await appendFile(
           path.join(dir, "stall-events.jsonl"),
@@ -88,6 +89,9 @@ const server = async ({ client, directory }) => {
 
   return {
     dispose: async () => clearInterval(timer),
+    "shell.env": async (_input, output) => {
+      output.env.PRIME_STATE_PS1 = helper
+    },
     event: async ({ event }) => {
       const evt = event
       const props = evt.properties ?? {}
@@ -95,15 +99,22 @@ const server = async ({ client, directory }) => {
         const info = props.info ?? {}
         if (info.agent === "sub" && info.parentID) {
           const now = Date.now()
-          live.set(info.id, { sessionID: info.id, parentID: info.parentID, started: now, progress: now, aborting: false })
+          live.set(info.id, {
+            sessionID: info.id,
+            parentID: info.parentID,
+            directory: info.directory ?? directory,
+            started: now,
+            progress: now,
+            aborting: false,
+          })
         }
         return
       }
       if (evt.type === "session.diff") {
-        mark(props.sessionID)
+        if (Array.isArray(props.diff) && props.diff.length > 0) mark(props.sessionID)
         return
       }
-      if (evt.type === "session.idle" || evt.type === "session.deleted") {
+      if (evt.type === "session.idle" || evt.type === "session.deleted" || evt.type === "session.error") {
         forget(props.sessionID ?? props.info?.id)
       }
     },
