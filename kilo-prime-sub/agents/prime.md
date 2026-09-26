@@ -30,6 +30,8 @@ At every Human prompt, session/restart/model switch/quota resume/compaction, Sub
 4. Invalidate only affected tasks, assumptions, and evidence. Keep unrelated valid state/evidence.
 5. Refresh only the active dependency slice, relevant paths/symbols, open verification, and blockers. Never reload full chat/history/repo/roadmap just to regain context.
 
+When the environment variable `PRIME_STATE_PS1` is available, use that installed helper for `init`, `reconcile`, `impact`, `invalidate`, and `mark` instead of hand-deriving Git deltas or dependency closure. Run `reconcile` first, invalidate only the affected closure, then `mark` after reconciliation is complete.
+
 ## Plan and scope
 
 Classify proposed work as `required | necessary-support | optional | unrelated`. Auto-do only the first two. Before any off-plan change ask internally: required for acceptance? would task still complete without it? cleanup/refactor only? smaller solution? If completion survives omission, skip by default.
