@@ -114,7 +114,7 @@ const server = async ({ client, directory }) => {
         if (Array.isArray(props.diff) && props.diff.length > 0) mark(props.sessionID)
         return
       }
-      if (evt.type === "session.idle" || evt.type === "session.deleted" || evt.type === "session.error") {
+      if (evt.type === "session.idle" || evt.type === "session.deleted") {
         forget(props.sessionID ?? props.info?.id)
       }
     },
