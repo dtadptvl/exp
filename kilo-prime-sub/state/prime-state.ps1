@@ -37,7 +37,8 @@ function Write-State([string]$Path, $State) {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $tmp = "$Path.tmp"
     $State | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $tmp -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $Path -Force
+    Copy-Item -LiteralPath $tmp -Destination $Path -Force
+    Remove-Item -LiteralPath $tmp -Force
 }
 
 function Git-Snapshot([string]$Repo) {
@@ -47,9 +48,11 @@ function Git-Snapshot([string]$Repo) {
     }
     $branch = (& git -C $Repo branch --show-current 2>$null | Out-String).Trim()
     $head = (& git -C $Repo rev-parse HEAD 2>$null | Out-String).Trim()
-    $dirty = @(& git -C $Repo status --porcelain=v1 --untracked-files=all 2>$null | ForEach-Object {
-        if ($_.Length -ge 4) { $_.Substring(3) } else { $_ }
-    } | Sort-Object -Unique)
+    $dirty = @(
+        & git -C $Repo diff --name-only 2>$null
+        & git -C $Repo diff --cached --name-only 2>$null
+        & git -C $Repo ls-files --others --exclude-standard 2>$null
+    ) | Where-Object { $_ } | Sort-Object -Unique
     [ordered]@{ repository=$true; branch=$branch; head=$head; dirty=$dirty; at=(Get-Date).ToUniversalTime().ToString('o') }
 }
 
