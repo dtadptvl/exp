@@ -7,6 +7,7 @@ Installed runtime pieces are deliberately small:
 - `agents/prime.md`: persistent system-level controller.
 - `agents/sub.md`: stateless task-local worker pinned to `9router/sub`.
 - `plugin/prime-sub-watchdog.js`: lifecycle watchdog using wall-clock + no-progress deadlines and native session abort. No step-count limit.
+- `prime-sub/prime-state.ps1`: deterministic state/Git reconciliation and selective DAG invalidation helper installed globally.
 - `.prime/state.json`: created/maintained by Prime per project from `protocol/STATE.md`.
 
 Kilo continues to own sessions, context isolation, permissions, model execution, built-in agents, compaction, Task lifecycle, and cancellation. No database, daemon, event bus, scheduler framework, worktree manager, reviewer-role taxonomy, or duplicate session store is added.
@@ -20,7 +21,7 @@ Prerequisite: current Kilo CLI already installed and your existing provider setu
 3. If validation reports Human-owned config changes, apply only `AI-CONFIG-MERGE-GUIDE.md`, then rerun `install.bat`.
 4. Start Kilo normally. With `default_agent: "prime"`, Prime is the default controller.
 
-The installer never edits `kilo.json`/`kilo.jsonc`. It copies only its owned global agent/plugin files, backs up different pre-existing files at those exact paths, writes an ownership manifest, and validates effective Kilo settings.
+The installer never edits `kilo.json`/`kilo.jsonc`. It copies only its owned global agent/plugin/state-helper files, backs up different pre-existing files at those exact paths, carries the original rollback target across idempotent reruns, writes an ownership manifest, and validates effective Kilo settings.
 
 ## Anti-stall
 
