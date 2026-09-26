@@ -1,43 +1,52 @@
 param([switch]$Uninstall, [switch]$UpgradeOwned)
 $ErrorActionPreference = 'Stop'
-function Hash($path) {
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) }
-    finally { $sha.Dispose() }
-}
 $paths = (& kilo debug paths | Out-String)
 if ($LASTEXITCODE -ne 0 -or $paths -notmatch '(?m)^config\s+(.+?)\s*$') { throw 'Install Kilo CLI first; kilo debug paths must report config.' }
 $dir = Join-Path ([IO.Path]::GetFullPath($Matches[1])) 'agents'
 $backup = Join-Path $dir '.prime-sub-original'
-$names = @('prime.md', 'sub.md')
+$names = @('prime.md', 'sub.md', 'state.py')
+function Source($name) {
+    if ($name -eq 'state.py') { return Join-Path $PSScriptRoot 'state.py' }
+    return Join-Path $PSScriptRoot "agents\$name"
+}
+function InstalledText($name) {
+    $text = [IO.File]::ReadAllText((Source $name), [Text.Encoding]::UTF8)
+    if ($name -eq 'prime.md') {
+        # JSON-style escaping is unnecessary inside Markdown code; Python receives a quoted path.
+        $path = (Join-Path $dir 'state.py').Replace('\', '/')
+        $text = $text.Replace('__PRIME_SUB_STATE_PATH__', $path)
+    }
+    return $text
+}
+function MatchesSource($name, $path) {
+    if (-not (Test-Path -LiteralPath $path)) { return $false }
+    return [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8).Replace("`r`n", "`n") -eq (InstalledText $name).Replace("`r`n", "`n")
+}
 if ($Uninstall) {
     foreach ($name in $names) {
         $target = Join-Path $dir $name
-        $source = Join-Path $PSScriptRoot "agents\$name"
         $original = Join-Path $backup $name
         if (Test-Path $target) {
-            if ((Hash $target) -ne (Hash $source)) { throw "Refusing to overwrite edited $target; restore manually." }
+            if (-not (MatchesSource $name $target)) { throw "Refusing to overwrite edited $target; restore manually." }
             Remove-Item $target
         }
         if (Test-Path $original) { Move-Item $original $target }
-        $previous = Join-Path $backup "previous-$name"
-        if (Test-Path $previous) { Remove-Item $previous }
+        # Keep upgrade snapshots for manual rollback; never erase prior revisions.
     }
     Write-Host 'Owned agents removed; original agents restored. No config/project files touched.'
     exit 0
 }
 New-Item -ItemType Directory -Path $dir -Force | Out-Null
 foreach ($name in $names) {
-    $source = Join-Path $PSScriptRoot "agents\$name"
+    $source = Source $name
     $target = Join-Path $dir $name
     if (-not (Test-Path $source)) { throw "Missing $source" }
     if (Test-Path $target) {
-        if ((Hash $source) -eq (Hash $target)) { continue }
+        if (MatchesSource $name $target) { continue }
         $original = Join-Path $backup $name
         if (Test-Path $original) {
             if (-not $UpgradeOwned) { throw "Refusing overwrite of modified $target. If this is your previously installed agent, rerun with -UpgradeOwned." }
-            $previous = Join-Path $backup "previous-$name"
-            if (Test-Path $previous) { throw "Refusing to overwrite rollback snapshot $previous; reconcile manually." }
+            $previous = Join-Path $backup ("previous-" + [guid]::NewGuid().ToString('N') + "-$name")
             Copy-Item $target $previous
             Remove-Item $target
         } else {
@@ -45,8 +54,10 @@ foreach ($name in $names) {
             Move-Item $target $original
         }
     }
-    Copy-Item $source $target
+    [IO.File]::WriteAllText($target, (InstalledText $name), (New-Object Text.UTF8Encoding($false)))
 }
+$python = Get-Command python -ErrorAction SilentlyContinue
+if (-not $python) { throw 'Python is required to run the installed state.py; install it and rerun setup.' }
 $prime = & kilo debug agent prime | ConvertFrom-Json
 $sub = & kilo debug agent sub | ConvertFrom-Json
 $config = & kilo debug config | ConvertFrom-Json
@@ -57,4 +68,4 @@ if ($prime.mode -ne 'primary' -or $sub.mode -ne 'subagent' -or
 if ($config.default_agent -ne 'prime' -or $config.subagent_depth -ne 1) {
     Write-Warning 'Human config action needed: default_agent=prime; subagent_depth=1. See AI_CONFIG_MERGE_GUIDE.md.'
 }
-Write-Host "Installed agent Markdown in $dir. No kilo.json/jsonc or built-ins changed."
+Write-Host "Installed global agents and state.py in $dir. No kilo.json/jsonc or built-ins changed."
