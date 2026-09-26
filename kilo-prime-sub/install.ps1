@@ -78,6 +78,11 @@ foreach ($f in $files) {
                 if (-not $previousHash) { $previousHash = Sha256 $legacyBackup }
             }
         }
+        if ($previousManifest.schema -eq 1 -and -not $backup -and -not $previousHash) {
+            # Legacy manifests cannot distinguish a newly-created file from a pre-existing identical file.
+            # Preserve conservatively on uninstall rather than risk deleting user content.
+            $previousHash = $currentHash
+        }
     } elseif ($currentHash -and $currentHash -ne $sourceHash) {
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         $backup = Join-Path $backupDir ($f.Key + '-' + [IO.Path]::GetFileName($f.Target))
