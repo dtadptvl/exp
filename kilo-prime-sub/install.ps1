@@ -71,6 +71,13 @@ foreach ($f in $files) {
     if ($prior -and $currentHash -eq $prior.sha256) {
         $previousHash = $prior.previous_sha256
         $backup = $prior.backup
+        if (-not $backup -and $previousManifest.backup_dir) {
+            $legacyBackup = Join-Path $previousManifest.backup_dir ([IO.Path]::GetFileName($f.Target))
+            if (Test-Path -LiteralPath $legacyBackup -PathType Leaf) {
+                $backup = $legacyBackup
+                if (-not $previousHash) { $previousHash = Sha256 $legacyBackup }
+            }
+        }
     } elseif ($currentHash -and $currentHash -ne $sourceHash) {
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         $backup = Join-Path $backupDir ($f.Key + '-' + [IO.Path]::GetFileName($f.Target))
