@@ -35,40 +35,64 @@ if (-not $kilo) { throw 'Native Kilo is required in PATH. Install/configure Kilo
 $root = Resolve-KiloConfigRoot
 $agentDir = Join-Path $root 'agents'
 $pluginDir = Join-Path $root 'plugin'
+$ownedDir = Join-Path $root 'prime-sub'
 $backupRoot = Join-Path $root 'prime-sub-backups'
 $manifestPath = Join-Path $root 'prime-sub-install.json'
 
 $files = @(
     @{ Source = Join-Path $PSScriptRoot 'agents\prime.md'; Target = Join-Path $agentDir 'prime.md'; Key = 'prime' },
     @{ Source = Join-Path $PSScriptRoot 'agents\sub.md'; Target = Join-Path $agentDir 'sub.md'; Key = 'sub' },
-    @{ Source = Join-Path $PSScriptRoot 'plugin\prime-sub-watchdog.js'; Target = Join-Path $pluginDir 'prime-sub-watchdog.js'; Key = 'watchdog' }
+    @{ Source = Join-Path $PSScriptRoot 'plugin\prime-sub-watchdog.js'; Target = Join-Path $pluginDir 'prime-sub-watchdog.js'; Key = 'watchdog' },
+    @{ Source = Join-Path $PSScriptRoot 'state\prime-state.ps1'; Target = Join-Path $ownedDir 'prime-state.ps1'; Key = 'state-helper' },
+    @{ Source = Join-Path $PSScriptRoot 'state\state-template.json'; Target = Join-Path $ownedDir 'state-template.json'; Key = 'state-template' }
 )
 foreach ($f in $files) { if (-not (Test-Path -LiteralPath $f.Source -PathType Leaf)) { throw "Package incomplete: $($f.Source)" } }
 New-Item -ItemType Directory -Path $agentDir -Force | Out-Null
 New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
+New-Item -ItemType Directory -Path $ownedDir -Force | Out-Null
 
-$changedExisting = @($files | Where-Object {
-    (Test-Path -LiteralPath $_.Target -PathType Leaf) -and ((Sha256 $_.Target) -ne (Sha256 $_.Source))
-})
-$backupDir = $null
-if ($changedExisting.Count -gt 0) {
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $backupDir = Join-Path $backupRoot ("$stamp-" + (Get-Random -Minimum 1000 -Maximum 9999))
-    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-    foreach ($f in $changedExisting) { Copy-Item -LiteralPath $f.Target -Destination (Join-Path $backupDir ([IO.Path]::GetFileName($f.Target))) -Force }
+$previousManifest = $null
+if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+    try { $previousManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json } catch { throw 'Existing Prime/Sub install manifest is invalid.' }
 }
 
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$backupDir = Join-Path $backupRoot ("$stamp-" + (Get-Random -Minimum 1000 -Maximum 9999))
+$records = New-Object System.Collections.ArrayList
+
 foreach ($f in $files) {
-    if ((Sha256 $f.Target) -ne (Sha256 $f.Source)) { Copy-Item -LiteralPath $f.Source -Destination $f.Target -Force }
+    $sourceHash = Sha256 $f.Source
+    $currentHash = Sha256 $f.Target
+    $prior = $null
+    if ($previousManifest) { $prior = @($previousManifest.files) | Where-Object { $_.path -eq $f.Target } | Select-Object -First 1 }
+
+    $previousHash = $currentHash
+    $backup = $null
+    if ($prior -and $currentHash -eq $prior.sha256) {
+        $previousHash = $prior.previous_sha256
+        $backup = $prior.backup
+    } elseif ($currentHash -and $currentHash -ne $sourceHash) {
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+        $backup = Join-Path $backupDir ($f.Key + '-' + [IO.Path]::GetFileName($f.Target))
+        Copy-Item -LiteralPath $f.Target -Destination $backup -Force
+    }
+
+    if ($currentHash -ne $sourceHash) { Copy-Item -LiteralPath $f.Source -Destination $f.Target -Force }
+    [void]$records.Add([ordered]@{
+        key = $f.Key
+        path = $f.Target
+        sha256 = $sourceHash
+        previous_sha256 = $previousHash
+        backup = $backup
+    })
 }
 
 $manifest = [ordered]@{
-    schema = 1
+    schema = 2
     installed_at = (Get-Date).ToUniversalTime().ToString('o')
-    backup_dir = $backupDir
-    files = @($files | ForEach-Object { [ordered]@{ key=$_.Key; path=$_.Target; sha256=(Sha256 $_.Target) } })
+    files = @($records)
 }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 $config = Invoke-KiloJson -Arguments @('debug','config') -Label 'kilo debug config'
 $prime = Invoke-KiloJson -Arguments @('debug','agent','prime') -Label 'kilo debug agent prime'
@@ -89,10 +113,8 @@ if ((Permission-Action $sub.permission 'bash' 'git commit -m x') -ne 'deny') { $
 if ((Permission-Action $sub.permission 'bash' 'git status --short') -ne 'allow') { $errors.Add('Sub cannot inspect git status.') }
 if ($env:KILO_PURE -eq '1') { $errors.Add('KILO_PURE=1 disables external plugins, including the Prime/Sub watchdog.') }
 
-Write-Host "Installed: $($files[0].Target)"
-Write-Host "Installed: $($files[1].Target)"
-Write-Host "Installed: $($files[2].Target)"
-if ($backupDir) { Write-Host "Backup:    $backupDir" }
+foreach ($r in $records) { Write-Host "Installed: $($r.path)" }
+if (Test-Path -LiteralPath $backupDir -PathType Container) { Write-Host "Backup:    $backupDir" }
 
 if ($errors.Count -gt 0) {
     Write-Host ''
@@ -103,5 +125,5 @@ if ($errors.Count -gt 0) {
 }
 
 Write-Host ''
-Write-Host 'PASS: Prime/Sub topology and lifecycle guard installation validate.' -ForegroundColor Green
+Write-Host 'PASS: Prime/Sub topology, state helper, and lifecycle guard installation validate.' -ForegroundColor Green
 Write-Host 'Installer did not edit Kilo configuration, providers, credentials, MCP, plugin config, or built-ins.'
