@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "objective": {"rev": 0, "text": ""},
+  "phase": "capture-objective",
+  "active_task": null,
+  "tasks": {},
+  "decisions": {},
+  "assumptions": {},
+  "acceptance": [],
+  "evidence": {},
+  "invalidated": [],
+  "git": null,
+  "next": "capture objective"
+}
