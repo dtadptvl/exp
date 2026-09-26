@@ -56,6 +56,10 @@ def test_state_is_minimal_and_semantic_edges_present() -> None:
         assert key in s
     for banned in ["raw chats", "chain-of-thought", "duplicate Git history"]:
         assert banned in s
+    helper = read("state/prime-state.ps1")
+    for command in ["reconcile", "impact", "invalidate", "mark"]:
+        assert f"'{command}'" in helper
+    assert "ConvertFrom-Json -Depth" not in helper
 
 
 def test_task_contract_has_required_fields_only() -> None:
@@ -72,6 +76,7 @@ def test_installer_never_edits_kilo_config_and_has_rollback() -> None:
     assert "default_agent" in ps and "subagent_depth" in ps
     assert "prime-sub-install.json" in ps
     assert "prime-sub-watchdog.js" in ps
+    assert "prime-state.ps1" in ps and "state-template.json" in ps
     un = read("uninstall.ps1")
     assert "Preserved modified owned file" in un
     assert "backup_dir" in un
