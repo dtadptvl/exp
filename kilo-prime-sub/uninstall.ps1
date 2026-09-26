@@ -23,6 +23,25 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
+if ($manifest.schema -eq 1 -and $manifest.backup_dir) {
+    foreach ($f in @($manifest.files)) {
+        $current = Sha256 $f.path
+        if ($current -and $current -eq $f.sha256) { Remove-Item -LiteralPath $f.path -Force }
+        elseif ($current) { Write-Warning "Preserved modified owned file: $($f.path)" }
+    }
+    foreach ($f in @($manifest.files)) {
+        $legacy = Join-Path $manifest.backup_dir ([IO.Path]::GetFileName($f.path))
+        if ((Test-Path -LiteralPath $legacy -PathType Leaf) -and -not (Test-Path -LiteralPath $f.path -PathType Leaf)) {
+            New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($f.path)) -Force | Out-Null
+            Copy-Item -LiteralPath $legacy -Destination $f.path -Force
+            Write-Host "Restored:  $($f.path)"
+        }
+    }
+    Remove-Item -LiteralPath $manifestPath -Force
+    Write-Host 'Legacy Prime/Sub installation removed/rolled back. Configuration files were untouched.'
+    exit 0
+}
+
 foreach ($f in @($manifest.files)) {
     $current = Sha256 $f.path
     if (-not $current) { continue }
