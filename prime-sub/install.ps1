@@ -1,4 +1,4 @@
-param([switch]$Uninstall)
+param([switch]$Uninstall, [switch]$UpgradeOwned)
 $ErrorActionPreference = 'Stop'
 function Hash($path) {
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -20,6 +20,8 @@ if ($Uninstall) {
             Remove-Item $target
         }
         if (Test-Path $original) { Move-Item $original $target }
+        $previous = Join-Path $backup "previous-$name"
+        if (Test-Path $previous) { Remove-Item $previous }
     }
     Write-Host 'Owned agents removed; original agents restored. No config/project files touched.'
     exit 0
@@ -32,9 +34,16 @@ foreach ($name in $names) {
     if (Test-Path $target) {
         if ((Hash $source) -eq (Hash $target)) { continue }
         $original = Join-Path $backup $name
-        if (Test-Path $original) { throw "Refusing overwrite of modified $target; back up/reconcile manually." }
-        New-Item -ItemType Directory -Path $backup -Force | Out-Null
-        Move-Item $target $original
+        if (Test-Path $original) {
+            if (-not $UpgradeOwned) { throw "Refusing overwrite of modified $target. If this is your previously installed agent, rerun with -UpgradeOwned." }
+            $previous = Join-Path $backup "previous-$name"
+            if (Test-Path $previous) { throw "Refusing to overwrite rollback snapshot $previous; reconcile manually." }
+            Copy-Item $target $previous
+            Remove-Item $target
+        } else {
+            New-Item -ItemType Directory -Path $backup -Force | Out-Null
+            Move-Item $target $original
+        }
     }
     Copy-Item $source $target
 }

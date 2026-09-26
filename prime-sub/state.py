@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Small Git-backed Prime checkpoint. Run from a project root; no agent transcript stored."""
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -14,9 +15,21 @@ def git(*args):
     return subprocess.check_output(['git', *args], text=True, encoding='utf-8').rstrip('\r\n')
 
 
+def dirty_path(line):
+    return line[3:].split(' -> ')[-1]
+
+
 def marker():
+    paths = sorted(set(git('status', '--porcelain=v1', '-uall', '--', '.', ':!.prime/state.json').splitlines()))
+    files = {}
+    for line in paths:
+        name = dirty_path(line)
+        path = Path(name)
+        # Hash only dirty files; a status line alone cannot detect another edit to an already dirty file.
+        content = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        files[name] = [line[:2], content, git('ls-files', '-s', '--', name)]
     return {'branch': git('branch', '--show-current'), 'head': git('rev-parse', 'HEAD'),
-            'paths': sorted(set(git('status', '--porcelain=v1', '-uall', '--', '.', ':!.prime/state.json').splitlines()))}
+            'paths': paths, 'files': files}
 
 
 def changed_paths(old):
@@ -24,9 +37,12 @@ def changed_paths(old):
     paths = set()
     if old and old['head'] != now['head']:
         paths.update(git('diff', '--name-only', old['head'], now['head']).splitlines())
-    # porcelain rename records both path names; do not interpret content as a commit.
-    for line in (old or {}).get('paths', []) + now['paths']:
-        paths.add(line[3:].split(' -> ')[-1])
+    before = (old or {}).get('files')
+    if before is None:  # old-format checkpoint: conservatively reconcile existing dirty paths once
+        paths.update(now['files'])
+    else:
+        paths.update(name for name in before.keys() | now['files'].keys()
+                     if before.get(name) != now['files'].get(name))
     return now, sorted(paths)
 
 

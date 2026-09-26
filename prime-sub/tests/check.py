@@ -43,7 +43,17 @@ with tempfile.TemporaryDirectory() as folder:
     s['git'] = delta['git']
     state.save(s)
     assert state.load()['objective'] == 'M1 to M5'
-    assert state.reconcile(state.load())['changed'] == ['three']  # acknowledged dirty work is still visible
+    assert state.reconcile(state.load())['changed'] == []  # same acknowledged dirty bytes are not a new edit
     assert state.load()['tasks']['other']['status'] == 'completed'
+    Path('three').write_text('human revision again')
+    assert state.reconcile(state.load())['invalidated'] == ['M3', 'M4', 'M5']
+    s['git'] = state.marker()
+    state.save(s)
+    subprocess.run(['git', 'add', 'three'], check=True)
+    assert state.reconcile(state.load())['changed'] == ['three']  # staged-only change
+    s['git'] = state.marker()
+    state.save(s)
+    subprocess.run(['git', 'commit', '-qm', 'human edit'], check=True)
+    assert state.reconcile(state.load())['changed'] == ['three']  # new HEAD
     os.chdir(original)
 print('PASS: selective DAG, external change, resume')
