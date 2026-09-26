@@ -39,3 +39,16 @@ A task stores only what Git cannot answer:
 `git` stores only a reconciliation marker: branch, HEAD, dirty paths, last-reconciled timestamp, and optional Human-change marker. Evidence stores compact references and validity scope, never copied command logs.
 
 Impact rule: a changed artifact/task directly invalidates consumers/dependents and evidence/assumptions tied to the changed semantic surface; continue transitively only through those invalid edges. Unrelated nodes remain valid.
+
+
+## Runtime helper
+
+The installer places `prime-state.ps1` under the global Kilo config's `prime-sub/` directory. The watchdog exposes its path to shell commands as `PRIME_STATE_PS1`.
+
+Commands:
+- `init`: create the exact minimal state if absent.
+- `snapshot`: return current branch/HEAD/dirty paths.
+- `reconcile`: compare stored Git marker with current Git and return only changed paths plus stale status; it does not mutate state.
+- `impact`: compute direct + transitive task impact from changed task IDs/artifacts.
+- `invalidate`: mark only the affected task/evidence/assumption closure invalid.
+- `mark`: store the current reconciliation marker only after impact handling is complete.
