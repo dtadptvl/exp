@@ -11,7 +11,9 @@ Required effective settings:
 }
 ```
 
-Also verify that existing provider configuration exposes `9router/sub`. Do not duplicate Prime/Sub prompt, mode, model, or permission settings into config; the installed global agent Markdown owns those fields. Do not add `steps`, `maxSteps`, or any step-count anti-hang setting. Do not add the removed/obsolete `experimental.task_model_selection` requirement: current Kilo exposes per-task model selection directly, and Prime explicitly requests `9router/sub` for every delegation.
+Also verify that existing provider configuration exposes `9router/sub`. Do not duplicate Prime/Sub prompt, mode, model, or permission settings into config; the installed global agent Markdown owns those fields. Do not add `steps`, `maxSteps`, or any step-count anti-hang setting. Do not add the removed/obsolete `experimental.task_model_selection` requirement: current Kilo exposes per-task model selection directly, and the runtime guard pins Prime delegation to `9router/sub`.
+
+If the model used by Prime is a custom/unlisted model, verify that its existing provider metadata has the correct non-zero `limit.context` (and `limit.output`). Kilo's native preflight auto-compaction cannot trigger when context resolves to 0. Do not invent limits; use the provider/model's real values. The Prime-only idle-boundary cap still works independently of this metadata.
 
 If a project contains `.kilo/agents/prime.md` or `.kilo/agents/sub.md`, project agent Markdown has higher precedence than the global installation. Reconcile that override deliberately rather than overwriting it silently.
 
