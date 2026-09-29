@@ -158,7 +158,9 @@ const server = async ({ client, directory }) => {
       compacting: false,
       lastCompact: 0,
     }
-    Object.assign(item, patch)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) item[key] = value
+    }
     sessions.set(sessionID, item)
     return item
   }
