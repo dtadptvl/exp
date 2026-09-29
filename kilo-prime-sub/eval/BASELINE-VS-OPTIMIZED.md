@@ -17,20 +17,22 @@ Baseline is the fully audited attached package `prime-sub-minimal-adaptive-20260
 | native tree cancellation | no supervisor | watchdog calls native session abort, tree scope |
 | obsolete `experimental.task_model_selection` requirement | required | removed |
 | provider `chunkTimeout` config requirement | required | removed; provider config untouched |
-| semantic DAG edges | not explicit enough for selective arbitrary invalidation | `depends_on/produces/consumes/verified_by/assumes` |
+| semantic DAG edges | not explicit enough for selective arbitrary invalidation | `depends_on/produces/consumes/verified_by/assumes` + installed deterministic state helper |
 | bounded retry policy | no fixed total attempt count, but no deterministic failure-signature bound | one fresh retry per stable signature then mandatory replan/Prime takeover |
+| Task Contract enforcement | prompt convention only | runtime rejects prose/wrappers/extra fields and canonicalizes exact JSON |
+| Prime context growth | unbounded until model/Kilo limit | Prime-only idle compaction at 120K prompt-side tokens, anchored by state + Git |
 | uninstall/rollback | backup only | ownership manifest + preserve modified files + restore backup |
-| Prime behavioral cases | none | 28 |
+| Prime behavioral cases | none | 30 |
 | Sub behavioral cases | none | 24 |
 | mandatory A-H deterministic simulations | none | 10 tests covering A-H |
 
-Prompt size did not grow to encode the new control plane: baseline `prime.md` was 66 lines / 5921 bytes and `sub.md` 46 lines / 2753 bytes; optimized prompts are 77 lines / 5473 bytes and 45 lines / 2090 bytes. The only new runtime mechanism is the 117-line watchdog plugin. Eval/docs/tests are development artifacts, not runtime machinery.
+The runtime remains one global plugin plus the small state helper. Contract enforcement and Prime context bounding are implemented in that existing plugin rather than adding another daemon/service. Sub remains disposable and unchanged in topology.
 
 ## Executed results in this environment
 
-- `python tests/run_all.py`: PASS, 19/19 deterministic tests.
-- `node --check plugin/prime-sub-watchdog.js`: PASS.
-- Mandatory A-H control simulations: PASS.
+- Earlier package run before the contract/context hardening: `python tests/run_all.py` PASS, 19/19.
+- Current plugin source parses successfully after ESM import/export stripping; direct behavioral checks confirm valid contract canonicalization, prose/extra-field/multiline rejection, prompt-side token accounting excluding output/reasoning, and active-slice state anchoring.
+- Mandatory A-H control simulations from the earlier run: PASS.
 - `python eval/run_live.py`: BLOCKED because the current execution environment has no `kilo` executable/provider credentials.
 - Attempt to fetch the official CLI binary for smoke testing from the container was blocked by container DNS/network isolation. Official Kilo docs/repository/release metadata were still verified externally before implementation.
 
