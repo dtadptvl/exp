@@ -123,10 +123,16 @@ function compactAnchor(state) {
         },
       ]),
   )
-  const assumptionIDs = active && Array.isArray(active.assumes) ? active.assumes.filter((x) => typeof x === "string") : []
-  const assumptions = plain(state.assumptions)
-    ? Object.fromEntries(assumptionIDs.filter((id) => Object.hasOwn(state.assumptions, id)).map((id) => [id, state.assumptions[id]]))
-    : {}
+  const refs = new Set([
+    ...(active && Array.isArray(active.assumes) ? active.assumes : []),
+    ...(active && Array.isArray(active.verified_by) ? active.verified_by : []),
+    ...(active?.contract && Array.isArray(active.contract.dependencies) ? active.contract.dependencies : []),
+  ].filter((x) => typeof x === "string"))
+
+  const selectRefs = (record) =>
+    plain(record)
+      ? Object.fromEntries([...refs].filter((id) => Object.hasOwn(record, id)).map((id) => [id, record[id]]))
+      : {}
 
   return {
     objective: state.objective,
@@ -134,7 +140,9 @@ function compactAnchor(state) {
     active_task: activeID,
     active,
     direct_dependencies: deps,
-    assumptions,
+    decisions: selectRefs(state.decisions),
+    assumptions: selectRefs(state.assumptions),
+    evidence: selectRefs(state.evidence),
     acceptance: state.acceptance,
     invalidated: state.invalidated,
     next: state.next,
