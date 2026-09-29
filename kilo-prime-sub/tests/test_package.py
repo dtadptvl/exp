@@ -66,6 +66,25 @@ def test_task_contract_has_required_fields_only() -> None:
     text = read("protocol/TASK-CONTRACT.md")
     for field in ["task_id", "objective", "in_scope", "out_of_scope", "acceptance", "hard_constraints", "relevant_files_symbols", "dependencies", "verification", "stop_condition"]:
         assert f'"{field}"' in text
+    assert "raw JSON" in text
+    assert "16,000" in text and "6,000" in text
+
+
+def test_runtime_enforces_contract_and_bounds_prime_context() -> None:
+    plugin = read("plugin/prime-sub-watchdog.js")
+    for needle in [
+        '"tool.execute.before"',
+        "PRIME_CONTRACT_INVALID",
+        "CONTRACT_FIELDS",
+        'output.args.model = "9router/sub"',
+        "PRIME_CONTEXT_SOFT_TOKENS",
+        "promptTokens",
+        "client.session.summarize",
+        "auto: false",
+        '"experimental.session.compacting"',
+        "STATE_ANCHOR",
+    ]:
+        assert needle in plugin
 
 
 def test_installer_never_edits_kilo_config_and_has_rollback() -> None:
