@@ -330,7 +330,7 @@ const server = async ({ client, directory }) => {
         "- active task status, changed paths that still matter, and the immediate next action.",
         "Drop completed Sub transcripts, old tool outputs, code excerpts, superseded plans, repeated rationale, and anything already represented by state/Git.",
         "Do not invent facts. If conversation conflicts with the anchor, preserve the conflict explicitly.",
-        "Keep the checkpoint concise; prefer IDs, paths, symbols, and exact commands over prose.",
+        "Keep the checkpoint at most 1,200 words and shorter when possible; prefer IDs, paths, symbols, and exact commands over prose.",
         anchor ? `STATE_ANCHOR:\n${anchor}` : "STATE_ANCHOR: unavailable; preserve the minimum required continuation facts.",
       ].join("\n")
     },
