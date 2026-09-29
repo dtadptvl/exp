@@ -347,7 +347,7 @@ const server = async ({ client, directory }) => {
     },
 
     "experimental.session.compacting": async (input, output) => {
-      const item = sessions.get(input.sessionID)
+      const item = await resolveSession(input.sessionID)
       if (item?.agent !== "prime") return
       const anchor = await stateAnchor(item)
       output.prompt = [
@@ -369,7 +369,7 @@ const server = async ({ client, directory }) => {
 
       if (evt.type === "session.created" || evt.type === "session.updated") {
         const info = props.info ?? {}
-        const item = remember(props.sessionID ?? info.id, {
+        remember(props.sessionID ?? info.id, {
           agent: info.agent,
           directory: info.directory ?? directory,
           model: info.model
