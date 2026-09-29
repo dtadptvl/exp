@@ -74,6 +74,8 @@ def test_runtime_enforces_contract_and_bounds_prime_context() -> None:
     plugin = read("plugin/prime-sub-watchdog.js")
     for needle in [
         '"tool.execute.before"',
+        '"experimental.chat.system.transform"',
+        "PRIME_PROTOCOL_V2",
         "PRIME_CONTRACT_INVALID",
         "CONTRACT_FIELDS",
         'output.args.model = "9router/sub"',
