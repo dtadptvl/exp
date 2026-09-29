@@ -54,6 +54,6 @@ Run local package checks:
 python tests/run_all.py
 ```
 
-`eval/` contains deterministic control simulations plus 28 Prime and 24 Sub behavioral-eval cases and a scoring rubric. `eval/run_live.py` is intentionally gated on a real Kilo installation/provider credentials; it does not fabricate live model results.
+`eval/` contains deterministic control simulations plus 30 Prime and 24 Sub behavioral-eval cases and a scoring rubric. `eval/run_live.py` is intentionally gated on a real Kilo installation/provider credentials; it does not fabricate live model results.
 
 See `docs/NATIVE-KILO-FINDINGS.md`, `docs/ATTACHMENT-AUDIT.md`, and `eval/BASELINE-VS-OPTIMIZED.md` for evidence and remaining live-test gates.
