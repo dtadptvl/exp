@@ -295,6 +295,7 @@ const server = async ({ client, directory }) => {
         throw new Error("PRIME_DELEGATION_INVALID: Prime may delegate only to sub")
       }
 
+      output.args.description = cleanString(output.args?.description, "description", 120)
       const contract = parseContract(output.args?.prompt)
       output.args.prompt = JSON.stringify(contract)
 
