@@ -295,6 +295,14 @@ const server = async ({ client, directory }) => {
       output.env.PRIME_STATE_PS1 = helper
     },
 
+    "experimental.chat.system.transform": async (input, output) => {
+      const item = input.sessionID ? sessions.get(input.sessionID) : undefined
+      if (item?.agent !== "prime") return
+      output.system.push(
+        "PRIME_PROTOCOL_V2: Task only custom sub. Task prompt must be one raw JSON object with exactly task_id, objective, in_scope, out_of_scope, acceptance, hard_constraints, relevant_files_symbols, dependencies, verification, stop_condition; no wrapper/code fence; target <=6000 chars. Persist durable facts once in .prime/state.json/evidence and refer by IDs instead of replaying completed Sub/history. Runtime rejects deviations.",
+      )
+    },
+
     "tool.execute.before": async (input, output) => {
       const session = sessions.get(input.sessionID)
       if (session?.agent !== "prime" || input.tool !== "task") return
