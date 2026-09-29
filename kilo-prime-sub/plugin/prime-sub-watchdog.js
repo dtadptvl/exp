@@ -173,6 +173,25 @@ const server = async ({ client, directory }) => {
     return item
   }
 
+  const resolveSession = async (sessionID) => {
+    const known = sessions.get(sessionID)
+    if (known?.agent) return known
+    try {
+      const result = await client.session.get({ sessionID, directory }, { throwOnError: true })
+      const info = result?.data
+      if (!info) return known
+      return remember(sessionID, {
+        agent: info.agent,
+        directory: info.directory ?? directory,
+        model: info.model
+          ? { providerID: info.model.providerID, modelID: info.model.id ?? info.model.modelID }
+          : undefined,
+      })
+    } catch {
+      return known
+    }
+  }
+
   const mark = (sessionID) => {
     if (!sessionID) return
     const item = live.get(sessionID)
@@ -296,7 +315,7 @@ const server = async ({ client, directory }) => {
     },
 
     "experimental.chat.system.transform": async (input, output) => {
-      const item = input.sessionID ? sessions.get(input.sessionID) : undefined
+      const item = input.sessionID ? await resolveSession(input.sessionID) : undefined
       if (item?.agent !== "prime") return
       output.system.push(
         "PRIME_PROTOCOL_V2: Task only custom sub. Task prompt must be one raw JSON object with exactly task_id, objective, in_scope, out_of_scope, acceptance, hard_constraints, relevant_files_symbols, dependencies, verification, stop_condition; no wrapper/code fence; target <=6000 chars. Persist durable facts once in .prime/state.json/evidence and refer by IDs instead of replaying completed Sub/history. Runtime rejects deviations.",
@@ -304,8 +323,9 @@ const server = async ({ client, directory }) => {
     },
 
     "tool.execute.before": async (input, output) => {
-      const session = sessions.get(input.sessionID)
-      if (session?.agent !== "prime" || input.tool !== "task") return
+      if (input.tool !== "task") return
+      const session = await resolveSession(input.sessionID)
+      if (session?.agent !== "prime") return
 
       if (output.args?.subagent_type !== "sub") {
         throw new Error("PRIME_DELEGATION_INVALID: Prime may delegate only to sub")
