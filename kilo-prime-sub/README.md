@@ -6,7 +6,7 @@ Installed runtime pieces are deliberately small:
 
 - `agents/prime.md`: persistent system-level controller.
 - `agents/sub.md`: stateless task-local worker pinned to `9router/sub`.
-- `plugin/prime-sub-watchdog.js`: lifecycle watchdog using wall-clock + no-progress deadlines and native session abort. No step-count limit.
+- `plugin/prime-sub-watchdog.js`: Sub lifecycle watchdog, Prime Task-contract guard, and Prime-only idle-boundary context compaction. No step-count limit.
 - `prime-sub/prime-state.ps1`: deterministic state/Git reconciliation and selective DAG invalidation helper installed globally.
 - `.prime/state.json`: created/maintained by Prime per project from `protocol/STATE.md`.
 
@@ -22,6 +22,14 @@ Prerequisite: current Kilo CLI already installed and your existing provider setu
 4. Start Kilo normally. With `default_agent: "prime"`, Prime is the default controller.
 
 The installer never edits `kilo.json`/`kilo.jsonc`. It copies only its owned global agent/plugin/state-helper files, backs up different pre-existing files at those exact paths, carries the original rollback target across idempotent reruns, writes an ownership manifest, and validates effective Kilo settings.
+
+## Prime contract and context bound
+
+Prime delegation is enforced at the native Task boundary. A Prime Task must target custom `sub` and its prompt must be one raw JSON object with the exact fields in `protocol/TASK-CONTRACT.md`. Invalid prose/wrappers/extra fields are rejected; valid contracts are trimmed, deduplicated, canonicalized, and routed to `9router/sub`. The contract target is <= 6,000 characters with a 16,000-character hard ceiling, so Sub receives only the actionable slice rather than Prime history.
+
+Prime context is bounded independently from Sub. The plugin observes only prompt-side usage (`input + cache.read + cache.write`; output/reasoning are excluded) and, after Prime becomes idle, calls native Kilo compaction when the last Prime request reaches 120,000 prompt-side tokens. Override with `PRIME_CONTEXT_SOFT_TOKENS`. Compaction uses `auto: false`, so it never creates a synthetic continuation turn. A Prime-specific compaction prompt anchors on the active slice of `.prime/state.json` and drops completed Sub transcripts, old tool outputs, duplicated code/history, and superseded plans.
+
+This makes project age and chat length non-authoritative: after compaction Prime re-anchors from state + Git. Sub remains disposable and is not compacted by this plugin.
 
 ## Anti-stall
 
