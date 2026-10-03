@@ -28,6 +28,15 @@ const SKILL_DESCRIPTION_MAX = 120
 const SKILLS_DESCRIBED_BUDGET = 6000
 const SKILLS_NAMED_BUDGET = 3000
 
+// Suggestions are model output, and the model reads untrusted text (files,
+// tool results, web pages). Before any of it reaches the screen or the prompt
+// box, keep only what a person can see: drop terminal escape sequences, then
+// every control, format, unassigned, private-use and surrogate character (by
+// Unicode category, so the list cannot fall behind), variation selectors and
+// the letters that render blank; fold whitespace to single spaces; keep at
+// most three combining marks in a row; and cap the length by code point.
+// Text carrying Unicode tag characters is refused outright: they have no use
+// in a prompt except to hide one.
 const ESCAPE_SEQUENCES =
   /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g
 const TAG_CHARACTERS = /[\u{E0000}-\u{E007F}]/u
@@ -48,6 +57,14 @@ function clean(text: string, max: number): string {
   return points.length > max ? `${points.slice(0, max - 1).join('')}…` : safe
 }
 
+// The session's own transcript already lists the skills the model may load,
+// but not the ones only the person can run, and descriptions there are cut to
+// a budget. This is the full set as the typeahead has it. Engine commands
+// (/clear, /config) are left out of the text: they are not next steps, and the
+// skills that ship with Claude Code are in the transcript's listing already.
+// Descriptions come from plugins and MCP servers, so they are cleaned like any
+// other untrusted text; once the budget for described entries is spent the
+// rest are listed by name alone.
 function skillList(commands: readonly CommandInfo[]): string {
   const described: string[] = []
   const named: string[] = []
@@ -89,6 +106,8 @@ function forkPrompt(skills: string): string {
   )
 }
 
+// A prompt that starts with a slash runs a command, so one naming a command
+// the session does not have is dropped rather than offered.
 function namesKnownCommand(prompt: string, known: ReadonlySet<string> | null): boolean {
   if (!prompt.startsWith('/') || known === null) return true
   return known.has(prompt.slice(1).split(' ', 1)[0] ?? '')
@@ -120,6 +139,7 @@ function parseSuggestions(reply: string, known: ReadonlySet<string> | null): Sug
   return items
 }
 
+// Session-local view state; a hot reload resets it, which is fine.
 let view: View = { kind: 'hidden' }
 
 function show($: EngineInterface, nextView: View): void {
@@ -131,11 +151,13 @@ export const register: Register = (on, options) => {
   const minTurnChars = typeof options?.minAnswerChars === 'number' ? options.minAnswerChars : 80
   const suggestsSkills = options?.suggestSkills !== false
 
+  // A new turn (typed or otherwise) hides whatever was offered.
   on('turn.start', async ($, e, next) => {
     if (view.kind !== 'hidden') show($, { kind: 'hidden' })
     return next(e)
   })
 
+  // Turn over: ask the fork, detached, so the turn's completion never waits on it.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.reason !== 'answer' || e.answer.trim().length < minTurnChars) return result
@@ -144,6 +166,7 @@ export const register: Register = (on, options) => {
     void (async () => {
       let items: Suggestion[] = []
       try {
+        // Without the list the fork still suggests; slash prompts go unchecked.
         const commands = await $.command.list().catch(() => null)
         const known = commands === null ? null : new Set(commands.map(command => command.name))
         const skills = suggestsSkills && commands !== null ? skillList(commands) : ''
@@ -152,6 +175,7 @@ export const register: Register = (on, options) => {
       } catch (error) {
         $.ui.log(`fork failed: ${String(error)}`)
       }
+      // A newer turn started (or another completed) while we waited: drop ours.
       if (view.kind !== 'loading' || view.turnId !== turnId) return
       show($, items.length === 0 ? { kind: 'hidden' } : { kind: 'offer', items })
       if (items[0] !== undefined) void $.prompt.suggest({ text: items[0].prompt }).catch(() => undefined)
