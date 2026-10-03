@@ -13,10 +13,35 @@ import Names from './names'
 import Switches from './switches'
 import Telemetry from './telemetry'
 
+/**
+ * No files: what a walk not taken, or one that failed, found.
+ */
 const NONE: readonly FsAncestor[] = []
 
+/**
+ * Registers the plugin's hooks for the mode `instructionFiles` names
+ * (`claude-md-or-agents-md` when unset; the manifest lists the four, nothing
+ * else arrives).
+ *
+ * `claude-md`: nothing beyond the usage row, the engine's CLAUDE.md walk
+ * standing alone. `managed-only`: the project's and the person's instruction
+ * files dropped, the organization's kept. `claude-md-or-agents-md` (a project
+ * with none of its own) and `claude-md-and-agents-md`: AGENTS.md files joined
+ * to the engine's instruction files, nested ones on a Read except in a run
+ * where the engine attaches nothing to a turn (--bare, which sets
+ * CLAUDE_CODE_SIMPLE, or CLAUDE_CODE_DISABLE_ATTACHMENTS). Every mode sends
+ * its usage rows through `$.telemetry` where that noun is seated and drops
+ * them where it is not.
+ *
+ * @param on the engine's registrar
+ * @param options the plugin's options; `instructionFiles` is `claude-md`,
+ * `claude-md-or-agents-md`, `claude-md-and-agents-md` or `managed-only`
+ */
 export function register(on: On, options: PluginOptions): void {
   const named = Modes.modeOf(options.instructionFiles)
+  // COMPAT_BREAK(agents-md-project-instructions): drop the projectInstructions
+  // mapping once stored settings have migrated. The host fills in the default,
+  // so an instructionFiles set to it cannot be told from one left unset.
   const legacy = Modes.legacyModeOf(options.projectInstructions)
   const isLegacyRead = legacy !== undefined && named === Modes.DEFAULT_MODE
   const mode = isLegacyRead ? legacy : named
@@ -42,7 +67,9 @@ export function register(on: On, options: PluginOptions): void {
     return next(e)
   })
 
-  if (mode === 'claude-md') return
+  if (mode === 'claude-md') {
+    return
+  }
 
   if (mode === 'managed-only') {
     on(
@@ -56,6 +83,7 @@ export function register(on: On, options: PluginOptions): void {
           ),
         }),
     )
+
     return
   }
 
@@ -70,13 +98,18 @@ export function register(on: On, options: PluginOptions): void {
 
   on('prompt.context', async ($, e, next) => {
     const handed = e.instructionFiles
+
     if (handed === undefined) {
-      return next(e).finally(() => given.clear())
+      return next(e).finally(() => {
+        given.clear()
+      })
     }
 
     const root = isFallback ? await $.session.root() : undefined
     rootSeen = root ?? rootSeen
     let isWalkFailed = false
+    // The walk, not only what was handed: the engine can withhold a project
+    // CLAUDE.md it loaded, and the project still has one.
     isClaudeProject =
       root !== undefined &&
       (handed.some(file => Files.isClaudeFileOnWalk(file, root)) ||
@@ -84,6 +117,7 @@ export function register(on: On, options: PluginOptions): void {
           files => files.length > 0,
           () => {
             isWalkFailed = true
+
             return true
           },
         )))
@@ -91,6 +125,7 @@ export function register(on: On, options: PluginOptions): void {
       ? NONE
       : await $.fs.ancestors({ names: Names.AGENTS_NAMES }).catch(() => {
           isWalkFailed = true
+
           return NONE
         })
     const added = Files.unseenFiles(Files.filesOf(found), handed)
@@ -110,6 +145,7 @@ export function register(on: On, options: PluginOptions): void {
 
     const isFirstLoad =
       root !== undefined && root !== rootLogged && added.length > 0
+
     if (isFirstLoad) {
       rootLogged = root
       $.ui.log(
@@ -123,6 +159,7 @@ export function register(on: On, options: PluginOptions): void {
     }
 
     const instructionFiles = Files.withProjectFiles(handed, added)
+
     return next({ ...e, instructionFiles }).finally(() => {
       given.clear()
       inContext = instructionFiles
@@ -131,10 +168,12 @@ export function register(on: On, options: PluginOptions): void {
 
   on('agent.spawn', { fork: true }, async ($, e, next) => {
     const result = await next(e)
+
     if (result.agentId !== undefined) {
       const parent = given.get(e.parentAgentId ?? Names.MAIN_LOOP)
       given.set(result.agentId, new Set(parent))
     }
+
     return result
   })
 
@@ -142,8 +181,14 @@ export function register(on: On, options: PluginOptions): void {
     const result = await next(e)
     const isSettledElsewhere =
       e.tool !== 'Read' || result.deny !== undefined || result.isError
-    if (isSettledElsewhere) return result
-    if (!(await attachesOnRead($))) return result
+
+    if (isSettledElsewhere) {
+      return result
+    }
+
+    if (!(await attachesOnRead($))) {
+      return result
+    }
 
     const [root, cwd] = await Promise.all([$.session.root(), $.session.cwd()])
     home ??= await homeOf($, cwd)
@@ -159,7 +204,10 @@ export function register(on: On, options: PluginOptions): void {
       isFallback &&
       (await $.fs.ancestors({ names: Names.CLAUDE_NAMES })).length > 0
     const isOutOfReach = isClaudeProject || !Frames.isBelow(read, root)
-    if (isOutOfReach) return result
+
+    if (isOutOfReach) {
+      return result
+    }
 
     const [stack, claude] = await Promise.all([
       $.fs.ancestors({ names: Names.AGENTS_NAMES, of: read, below: root }),
@@ -181,10 +229,14 @@ export function register(on: On, options: PluginOptions): void {
     for (const file of fresh) {
       const isSent =
         attached.includes(file) || (Frames.isFileAt(file, read) && isWholeRead)
-      if (isSent) sent.add(file.path)
+
+      if (isSent) {
+        sent.add(file.path)
+      }
     }
 
     const hasAttached = attached.length > 0
+
     if (hasAttached) {
       Telemetry.quietly(() =>
         $.telemetry.log(Telemetry.nestedRowOf(mode, attached.length)),
@@ -203,16 +255,42 @@ export function register(on: On, options: PluginOptions): void {
   })
 }
 
+/**
+ * Whether a Read attaches nested AGENTS.md files in this run: not where the
+ * engine attaches nothing to a turn, a nested CLAUDE.md included, which is a
+ * --bare run (it sets CLAUDE_CODE_SIMPLE) or one with
+ * CLAUDE_CODE_DISABLE_ATTACHMENTS on.
+ *
+ * Read on every Read, as the engine reads them on every turn: a settings
+ * `env` block or a managed delivery can flip either mid-session. The files of
+ * the walk itself need no such check: where the engine loads no instruction
+ * files `$.fs.ancestors` finds none.
+ *
+ * @param $ the engine, as the `tool.call` hook holds it
+ * @returns whether nested files ride a Read's result here
+ */
 async function attachesOnRead($: EngineInterface): Promise<boolean> {
   const [simple, attachmentsOff] = await Promise.all([
     $.env.get('CLAUDE_CODE_SIMPLE'),
     $.env.get('CLAUDE_CODE_DISABLE_ATTACHMENTS'),
   ])
+
   return (
     !Switches.isSwitchedOn(simple) && !Switches.isSwitchedOn(attachmentsOff)
   )
 }
 
+/**
+ * The home directory a `~` in a Read's path stands for, read the way the
+ * Read tool reads it.
+ *
+ * The profile directory on a Windows spelling of the working directory,
+ * else `HOME`, each falling back to the other.
+ *
+ * @param $ the engine, as the `tool.call` hook holds it
+ * @param cwd the session's working directory, whose spelling names the platform
+ * @returns the home directory, or undefined when the environment names none
+ */
 async function homeOf(
   $: EngineInterface,
   cwd: string,
@@ -222,5 +300,6 @@ async function homeOf(
     $.env.get('USERPROFILE'),
   ])
   const isWindowsSpelling = cwd.includes('\\')
+
   return isWindowsSpelling ? (profile ?? home) : (home ?? profile)
 }
